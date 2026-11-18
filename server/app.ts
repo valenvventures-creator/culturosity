@@ -14,6 +14,31 @@ import { providerRoutes } from "./routes/provider";
 import { serviceRoutes } from "./routes/services";
 import { internalRoutes } from "./routes/internal";
 
+const CONFIG_MESSAGES: [RegExp, string][] = [
+  [/DATABASE_URL is not configured/, "No database is configured for this deployment. Attach Netlify DB or set DATABASE_URL, then redeploy."],
+  [/STORAGE_DRIVER/, "Media storage is misconfigured. Set STORAGE_DRIVER=netlify-blobs on Netlify."],
+  [/pglite/i, "No database is configured for this deployment. Attach Netlify DB or set DATABASE_URL, then redeploy."],
+];
+function safeConfigMessage(e: Error) {
+  const known = CONFIG_MESSAGES.find(([re]) => re.test(e.message))?.[1];
+  if (known) return known;
+  const kind = e.name && e.name !== "Error" ? ` (${e.name})` : "";
+  return `The API could not start${kind}. Check the function logs for this request ID.`;
+}
+
+/** Map database connectivity/schema failures to safe 503 responses. */
+function dbProblem(err: unknown): AppError | null {
+  const code = String((err as any)?.code ?? "");
+  if (code === "42P01")
+    return new AppError(503, "database_not_migrated", "The database has no Culturosity tables yet. Redeploy so the build can run migrations against this database.");
+  if (code === "28P01" || code === "28000") return new AppError(503, "database_auth_failed", "The database rejected the credentials in the configured connection string.");
+  if (code === "3D000") return new AppError(503, "database_missing", "The database named in the connection string does not exist.");
+  if (["ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT", "EAI_AGAIN", "ECONNRESET"].includes(code))
+    return new AppError(503, "database_unreachable", `The database could not be reached (${code}).`);
+  if (/CERT|SELF_SIGNED|TLS/i.test(code)) return new AppError(503, "database_tls_failed", `TLS to the database failed (${code}).`);
+  return null;
+}
+
 export function createApp(depsOrFactory: Deps | (() => Promise<Deps>)) {
   const app = new Hono<AppEnv>().basePath("/api");
   let depsPromise: Promise<Deps> | null = null;
@@ -30,7 +55,13 @@ export function createApp(depsOrFactory: Deps | (() => Promise<Deps>)) {
     const requestId = c.req.header("x-request-id") || randomToken(9);
     c.set("requestId", requestId);
     c.header("X-Request-Id", requestId);
-    c.set("deps", await getDeps());
+    try {
+      c.set("deps", await getDeps());
+    } catch (e) {
+      // Configuration problems are reported with a safe, actionable reason (no secrets or hostnames).
+      console.error(`[api] ${requestId} configuration error:`, (e as Error).message);
+      return c.json({ error: { code: "not_configured", message: safeConfigMessage(e as Error), requestId } }, 503);
+    }
     await next();
     if (!c.res.headers.get("Cache-Control")) c.header("Cache-Control", "private, no-store");
   });
@@ -40,8 +71,9 @@ export function createApp(depsOrFactory: Deps | (() => Promise<Deps>)) {
 
   app.get("/health", async (c) => {
     const { db } = c.get("deps");
-    await db.query("select 1");
-    return c.json({ ok: true, db: db.kind });
+    const m = await db.query<{ n: number }>("select count(*)::int as n from schema_migrations"); // 42P01 -> not migrated
+    const t = await db.query("select 1 from organizations where slug = 'culturosity'"); // base seed present?
+    return c.json({ ok: true, db: db.kind, migrations: m.rows[0].n, seeded: t.rows.length > 0 });
   });
 
   app.route("/", authRoutes);
@@ -59,9 +91,16 @@ export function createApp(depsOrFactory: Deps | (() => Promise<Deps>)) {
     if (err instanceof AppError) e = err;
     else if (err instanceof ZodError) e = fromZod(err);
     else if ((err as any)?.code === "23505") e = new AppError(409, "conflict", "That record already exists.");
+    else if (dbProblem(err)) {
+      console.error(`[api] ${requestId} database error:`, (err as any)?.code, (err as Error).message);
+      e = dbProblem(err)!;
+    }
     else if ((err as any)?.code === "23503" || (err as any)?.code === "23514" || (err as any)?.code === "22P02")
       e = new AppError(400, "invalid_reference", "The request referenced invalid or inconsistent data.");
-    else {
+    else if ((err as Error)?.name === "MissingBlobsEnvironmentError") {
+      console.error(`[api] ${requestId} storage error:`, (err as Error).message);
+      e = new AppError(503, "storage_unavailable", "Media storage (Netlify Blobs) is not available to this function.");
+    } else {
       console.error(`[api] ${requestId}`, err);
       e = new AppError(500, "server_error", "Something went wrong on our side. Please try again.");
     }

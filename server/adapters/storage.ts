@@ -60,21 +60,26 @@ export function createLocalStorage(dir: string): StorageAdapter {
 }
 
 export async function createNetlifyBlobsStorage(): Promise<StorageAdapter> {
-  const { getStore } = await import("@netlify/blobs");
-  const store = getStore({ name: "culturosity-assets", consistency: "strong" });
+  // Connect lazily: a storage problem must not take down routes that never touch media.
+  let storePromise: Promise<any> | null = null;
+  const store = () =>
+    (storePromise ??= import("@netlify/blobs").then(({ getStore }) => getStore({ name: "culturosity-assets", consistency: "strong" })).catch((e) => {
+      storePromise = null;
+      throw e;
+    }));
   return {
     driver: "netlify-blobs",
     async put(key, bytes, mime) {
       const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-      await store.set(key, ab, { metadata: { mime } });
+      await (await store()).set(key, ab, { metadata: { mime } });
     },
     async get(key) {
-      const r = await store.getWithMetadata(key, { type: "arrayBuffer" });
+      const r = await (await store()).getWithMetadata(key, { type: "arrayBuffer" });
       if (!r) return null;
       return { bytes: new Uint8Array(r.data as ArrayBuffer), mime: String((r.metadata as any)?.mime || "application/octet-stream") };
     },
     async remove(key) {
-      await store.delete(key);
+      await (await store()).delete(key);
     },
   };
 }

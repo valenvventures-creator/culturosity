@@ -24,7 +24,11 @@ export interface ServerConfig {
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): ServerConfig {
   const mode: AppMode = env.APP_MODE === "production" ? "production" : "demo";
-  const isNetlify = Boolean(env.NETLIFY || env.NETLIFY_DEV || env.SITE_ID);
+  // Build-time vars (NETLIFY, SITE_ID) are not always present inside the function runtime,
+  // so also detect the Netlify/Lambda runtime and the Netlify DB variable.
+  const isNetlify = Boolean(
+    env.NETLIFY || env.NETLIFY_DEV || env.SITE_ID || env.NETLIFY_DATABASE_URL || env.NETLIFY_BLOBS_CONTEXT || env.AWS_LAMBDA_FUNCTION_NAME || env.NETLIFY_FUNCTIONS_PORT,
+  );
   const baseUrl = (env.APP_BASE_URL || env.URL || "http://localhost:5173").replace(/\/$/, "");
   const effort = env.AI_EFFORT === "low" || env.AI_EFFORT === "high" ? env.AI_EFFORT : "medium";
   return {
