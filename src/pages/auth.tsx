@@ -114,6 +114,9 @@ export function SignUpPage() {
         <button className="btn btn-primary btn-block btn-lg" disabled={busy}>
           {busy ? "Creating…" : "Create account"}
         </button>
+        <p className="muted" style={{ marginTop: 10, fontSize: ".82rem" }}>
+          By creating an account, you agree to our <Link to="/terms">Terms of Use</Link> and <Link to="/privacy">Privacy Policy</Link>.
+        </p>
       </form>
       <p style={{ marginTop: 14, fontSize: ".92rem" }}>
         Already have an account? <Link to="/auth/signin">Sign in</Link>
