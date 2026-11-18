@@ -1025,7 +1025,7 @@ export function DemoGuidePage() {
     ["Explain affinity programs for organizations", "/affinity", "How a company, association or union gets its own private perks program for its people, alongside Culturosity Perks."],
     ["Show how providers add offers", "/submit-perk", "Show the Submit a Perk form only — don’t submit it during a demo, because submitting publishes a real perk."],
     ["Explain Self-Service, Launch with Culturosity and Fully Managed", "/services", "Walk through the three ways to work with Culturosity. No invented pricing — offer a proposal instead."],
-    ["Close with a demo booking or proposal request", "/services#request", "Book a follow-up with the booking link, or fill in Request a Proposal together (it goes to the Service queue and emails Culturosity)."],
+    ["Close with a proposal request", "/services#request", "This walkthrough is the demo — close it by filling in Request a Proposal together with the prospect, using their organization’s details. It goes straight to the Service queue and emails Culturosity, and the prospect gets a confirmation email."],
   ];
   return (
     <Wrap>
