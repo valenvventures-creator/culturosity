@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../context";
+import type { Queryable } from "../db";
 import { serviceRequestSchema } from "../../shared/schemas";
 import { fromZod, notFound, badRequest } from "../lib/errors";
 import { audit, rateLimit, sourceHash } from "../lib/security";
@@ -7,6 +8,30 @@ import { activeMembership, orgBySlug, requireGrant, requireOrgRole } from "../li
 import { getSetting } from "../lib/settings";
 
 export const serviceRoutes = new Hono<AppEnv>();
+
+const APPROACH_LABELS: Record<string, string> = {
+  self_service: "Self-Service",
+  launch: "Launch with Culturosity",
+  managed: "Fully Managed",
+  unsure: "Not sure yet",
+};
+
+/**
+ * Who hears about new proposal requests: the address(es) set in Access settings, otherwise every
+ * active super admin. Kept out of source code on purpose.
+ */
+export async function serviceNotificationRecipients(db: Queryable): Promise<string[]> {
+  const configured = ((await getSetting<string>(db, "service_notification_email")) ?? "")
+    .split(/[,;\s]+/)
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+  if (configured.length) return [...new Set(configured)];
+  const r = await db.query<{ email: string }>(
+    `select distinct lower(u.email) as email from platform_grants g join app_users u on u.id = g.user_id
+      where g.grant_name = 'super_admin' and g.revoked_at is null and u.status = 'active' and not u.is_demo`,
+  );
+  return r.rows.map((x) => x.email);
+}
 
 /** Saved durably first; email notification is best-effort and optional. */
 serviceRoutes.post("/service-requests", async (c) => {
@@ -34,13 +59,52 @@ serviceRoutes.post("/service-requests", async (c) => {
     [orgId, b.organizationName, b.contactName, b.contactEmail, b.approxMemberCount ?? null, b.serviceNeeds, b.approach, b.coverage, b.targetLaunch, b.message, user?.id ?? null, isDemo],
   );
   await audit(db, { actor: user?.id ?? null, orgId, action: "service_request.created", targetType: "service_request", targetId: r.rows[0].id });
-  const notify = (await getSetting<string>(db, "service_notification_email")) ?? null;
-  if (notify && email.configured) {
+  if (!isDemo) {
+    const { config } = c.get("deps");
+    const approach = APPROACH_LABELS[b.approach] ?? b.approach;
+    // 1. Notify Culturosity (the configured address, or the super admins). Replies go to the requester.
+    for (const to of await serviceNotificationRecipients(db)) {
+      await email
+        .send(db, {
+          to,
+          replyTo: b.contactEmail,
+          subject: `New proposal request: ${b.organizationName.slice(0, 120)}`,
+          text: [
+            "A new Request a Proposal form was submitted on Culturosity.",
+            "",
+            `Organization: ${b.organizationName}`,
+            `Contact: ${b.contactName} <${b.contactEmail}>`,
+            `Approximate members: ${b.approxMemberCount ?? "not given"}`,
+            `Preferred approach: ${approach}`,
+            `Services needed:\n${b.serviceNeeds.map((n) => `  - ${n}`).join("\n")}`,
+            `Coverage: ${b.coverage || "not given"}`,
+            `Target launch: ${b.targetLaunch || "not given"}`,
+            "",
+            `Message:\n${b.message || "(none)"}`,
+            "",
+            `Reply to this email to answer ${b.contactName} directly, or open the Service queue:`,
+            `${config.baseUrl}/culturosity/admin/services`,
+          ].join("\n"),
+        })
+        .catch(() => {});
+    }
+    // 2. Confirm receipt to the requester. Fixed wording only (no submitted text), so the form can't be used to send arbitrary content.
     await email
       .send(db, {
-        to: notify,
-        subject: `New Culturosity service request: ${b.organizationName}`,
-        text: `Organization: ${b.organizationName}\nApproach: ${b.approach}\nNeeds: ${b.serviceNeeds.join(", ")}\nOpen the admin service queue to follow up.`,
+        to: b.contactEmail,
+        subject: "We received your request — Culturosity",
+        text: [
+          "Thank you for your interest in Culturosity.",
+          "",
+          "We've received your request for a proposal and a member of our team will be in touch soon.",
+          "",
+          `Services you asked about:\n${b.serviceNeeds.map((n) => `  - ${n}`).join("\n")}`,
+          `Preferred approach: ${approach}`,
+          "",
+          "If you didn't submit this request, you can ignore this email.",
+          "",
+          "Culturosity — Better perks. Stronger connections.",
+        ].join("\n"),
       })
       .catch(() => {});
   }

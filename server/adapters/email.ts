@@ -7,6 +7,8 @@ export interface EmailMessage {
   to: string;
   subject: string;
   text: string;
+  /** Where replies go (e.g. the person who sent a proposal request). */
+  replyTo?: string;
 }
 /** `sent` is true only when the provider accepted the message; `error` is the provider's reason otherwise. */
 export interface EmailResult {
@@ -34,7 +36,7 @@ export function createEmailAdapter(cfg: ServerConfig): EmailAdapter {
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ from: cfg.emailFrom, to: [msg.to], subject: msg.subject, text: msg.text }),
+          body: JSON.stringify({ from: cfg.emailFrom, to: [msg.to], subject: msg.subject, text: msg.text, ...(msg.replyTo ? { reply_to: msg.replyTo } : {}) }),
         });
         if (res.ok) return { sent: true };
         // Resend explains rejections (e.g. unverified domain) in a JSON "message"; never includes the key.

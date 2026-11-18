@@ -40,6 +40,11 @@ Date: 2026-11-18.
 - The link opens `/auth/sales/:token`: the person sets their name and password (or connects an existing account with its password) and gets the `sales_admin` role. They still need the numeric access code to open the area.
 - Salespeople can use Overview, Research Directory, Sales Outreach, Pipeline, Demo Guide and the Service queue. They **cannot** change the access code, manage the sales team, see or manage any workspace (including the Culturosity catalogue), pause/delete workspaces, reset demo data or create workspaces. Super admin access can't be removed from the site.
 
+### Proposal request emails
+
+- Each Request a Proposal is saved to the Service queue, then (when Resend is configured) emailed to the address in **Admin → Access settings → Proposal request notifications**, with Reply-To set to the requester. If no address is set, all active non-demo super admins are notified. The address is stored in the database, not in source code.
+- The requester gets a fixed-wording "we received your request" confirmation (no submitted free text, so the public form can't be used to relay arbitrary content). Demo-workspace requests send nothing.
+
 ## Tests run
 
 - `npm test`: 30 tests passed.

@@ -1263,7 +1263,57 @@ export function AccessSettingsPage() {
         <TextField label="New code (6–20 digits)" type="password" inputMode="numeric" autoComplete="off" value={f.newCode} onChange={(e) => setF({ ...f, newCode: e.target.value.replace(/\D/g, "") })} />
         <button className="btn btn-dark">Rotate code</button>
       </form>
+      <NotificationSettings />
     </Wrap>
+  );
+}
+
+/** Owner setting: who is emailed about new Request a Proposal submissions. */
+function NotificationSettings() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { data } = useQuery<any>({ queryKey: ["internal", "notify"], queryFn: () => api.get("/internal/settings/notifications") });
+  const [value, setValue] = useState<string | null>(null);
+  const [err, setErr] = useState<string | undefined>();
+  if (!data) return null;
+  const v = value ?? data.serviceNotificationEmail;
+  return (
+    <form
+      className="panel"
+      style={{ maxWidth: 520, marginTop: 20 }}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setErr(undefined);
+        try {
+          await api.put("/internal/settings/notifications", { serviceNotificationEmail: v });
+          setValue(null);
+          await qc.invalidateQueries({ queryKey: ["internal", "notify"] });
+          toast("Notification settings saved");
+        } catch (x) {
+          setErr((x as ApiError).fields?.serviceNotificationEmail ?? (x as Error).message);
+        }
+      }}
+    >
+      <h2 style={{ fontSize: "1.1rem" }}>Proposal request notifications</h2>
+      <p className="muted" style={{ fontSize: ".88rem" }}>
+        Each new Request a Proposal is saved to the Service queue and emailed here, with replies going straight to the person who asked. They also get an
+        automatic “we received your request” confirmation.
+      </p>
+      <TextField
+        label="Send notifications to"
+        value={v}
+        onChange={(e) => setValue(e.target.value)}
+        error={err}
+        placeholder="Leave empty to notify the super admins"
+        hint="One address, or up to 5 separated by commas."
+      />
+      <p className="muted" style={{ fontSize: ".85rem" }}>
+        Currently notifying: <strong>{data.effectiveRecipients.join(", ") || "nobody"}</strong>
+        {data.serviceNotificationEmail ? "" : " (super admins, because no address is set)"}.
+        {data.emailConfigured ? "" : " Email isn’t connected, so nothing is sent yet."}
+      </p>
+      <button className="btn btn-dark">Save</button>
+    </form>
   );
 }
 

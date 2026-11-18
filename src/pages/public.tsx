@@ -340,6 +340,7 @@ export function ServicesPage() {
 
 export function ServiceRequestForm({ orgSlug, compact }: { orgSlug?: string; compact?: boolean }) {
   const { data: me } = useMe();
+  const { data: cfg } = useConfig();
   const [f, setF] = useState({
     organizationName: "",
     contactName: me?.user?.display_name ?? "",
@@ -373,8 +374,11 @@ export function ServiceRequestForm({ orgSlug, compact }: { orgSlug?: string; com
   if (done)
     return (
       <div className="panel" role="status">
-        <h2>Thank you — your request is saved.</h2>
-        <p className="muted">The Culturosity team will follow up by email. Your request is recorded in our service queue whether or not email notifications are configured.</p>
+        <h2>Thank you — we’ve received your request.</h2>
+        <p className="muted">
+          A member of the Culturosity team will be in touch soon.{" "}
+          {cfg?.integrations?.email === "resend" ? <>We’ve also sent a confirmation to <strong>{f.contactEmail}</strong>.</> : null}
+        </p>
       </div>
     );
   return (

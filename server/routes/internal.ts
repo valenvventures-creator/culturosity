@@ -78,6 +78,30 @@ internalRoutes.post("/internal/gate/rotate", async (c) => {
   return c.json({ ok: true });
 });
 
+// ---- Owner settings: where proposal-request notifications go ----
+internalRoutes.get("/internal/settings/notifications", async (c) => {
+  await requireUnlock(c, ["super_admin"]);
+  const { db, email } = c.get("deps");
+  const { serviceNotificationRecipients } = await import("./services");
+  return c.json({
+    serviceNotificationEmail: (await getSetting<string>(db, "service_notification_email")) ?? "",
+    effectiveRecipients: await serviceNotificationRecipients(db),
+    emailConfigured: email.configured,
+  });
+});
+
+internalRoutes.put("/internal/settings/notifications", async (c) => {
+  const { user } = await requireUnlock(c, ["super_admin"]);
+  const { db } = c.get("deps");
+  const raw = String(((await c.req.json().catch(() => ({}))) as { serviceNotificationEmail?: string }).serviceNotificationEmail ?? "").trim();
+  const list = raw.split(/[,;\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+  if (list.length > 5) throw badRequest("Use up to 5 addresses.", { serviceNotificationEmail: "Up to 5 addresses" });
+  for (const e of list) if (!emailSchema.safeParse(e).success) throw badRequest(`“${e}” isn't a valid email address.`, { serviceNotificationEmail: "Check the addresses" });
+  await setSetting(db, "service_notification_email", list.join(", "), user.id);
+  await audit(db, { actor: user.id, action: "settings.notifications_updated" });
+  return c.json({ ok: true });
+});
+
 internalRoutes.get("/internal/overview", async (c) => {
   await requireUnlock(c);
   const { db } = c.get("deps");

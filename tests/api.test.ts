@@ -371,6 +371,54 @@ describe("10. managed-service requests", () => {
     await nonAdmin.signIn("admin@northwind.example");
     expect((await nonAdmin.get("/internal/service-requests")).status).toBe(404);
   });
+
+  it("emails the notification address and a fixed-wording confirmation to the requester", async () => {
+    const sa = client(app, "10.3.0.5");
+    await sa.signIn("super@demo.culturosity.test");
+    await sa.post("/internal/gate/unlock", { code: TEST_GATE_CODE });
+    const outbox = async (to: string) =>
+      (await ctx.db.query<{ subject: string; body_text: string }>(`select subject, body_text from email_outbox where to_email = $1 order by created_at`, [to])).rows;
+    const submit = (ip: string, contactEmail: string) =>
+      client(app, ip).post("/service-requests", {
+        organizationName: "Prairie Teachers Association",
+        contactName: "Jamie",
+        contactEmail,
+        serviceNeeds: ["Program strategy and benefits planning"],
+        approach: "launch",
+        message: "Please call me",
+      });
+
+    // Owner-only setting.
+    const sales = client(app, "10.3.0.6");
+    await sales.signIn("sales@demo.culturosity.test");
+    expect((await sales.put("/internal/settings/notifications", { serviceNotificationEmail: "x@example.com" })).status).toBe(404);
+    expect((await sa.put("/internal/settings/notifications", { serviceNotificationEmail: "not an email" })).status).toBe(400);
+    expect((await sa.put("/internal/settings/notifications", { serviceNotificationEmail: "Proposals@Example.com" })).status).toBe(200);
+    expect((await sa.get("/internal/settings/notifications")).json.effectiveRecipients).toEqual(["proposals@example.com"]);
+
+    expect((await submit("10.3.0.7", "jamie@example.org")).status).toBe(201);
+    const note = await outbox("proposals@example.com");
+    expect(note).toHaveLength(1);
+    expect(note[0].subject).toBe("New proposal request: Prairie Teachers Association");
+    expect(note[0].body_text).toContain("Jamie <jamie@example.org>");
+    expect(note[0].body_text).toContain("Please call me");
+    expect(note[0].body_text).toContain("/culturosity/admin/services");
+    const conf = await outbox("jamie@example.org");
+    expect(conf).toHaveLength(1);
+    expect(conf[0].subject).toBe("We received your request — Culturosity");
+    expect(conf[0].body_text).not.toContain("Please call me"); // no submitted free text in the confirmation
+    expect(conf[0].body_text).not.toContain("Prairie Teachers");
+
+    // With no address set, the (non-demo) super admins are notified.
+    await sa.put("/internal/settings/notifications", { serviceNotificationEmail: "" });
+    const { passwordAuth } = await import("../server/lib/auth");
+    const ownerId = await ctx.db.tx((q) => passwordAuth.createPasswordUser(q, { email: "owner@culturosity.example", password: "a-long-owner-password-1", displayName: "Owner", verified: true }));
+    await ctx.db.query(`insert into platform_grants (user_id, grant_name) values ($1,'super_admin')`, [ownerId]);
+    expect((await sa.get("/internal/settings/notifications")).json.effectiveRecipients).toEqual(["owner@culturosity.example"]);
+    await submit("10.3.0.8", "jamie2@example.org");
+    expect(await outbox("owner@culturosity.example")).toHaveLength(1);
+    await ctx.db.query(`update platform_grants set revoked_at = now() where user_id = $1`, [ownerId]);
+  });
 });
 
 describe("accounts", () => {
