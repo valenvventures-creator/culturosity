@@ -2,7 +2,8 @@
 // content_packs (like migrations). Safe to run on every deploy.
 import type { Db, Queryable } from "../../db";
 import { newProviderRef } from "../../lib/publish";
-import { CULTUROSITY_PERK_LISTINGS, listingLabel } from "./0001_culturosity_perks_listings";
+import { CULTUROSITY_PERK_LISTINGS, listingLabel, type ListingSpec } from "./0001_culturosity_perks_listings";
+import { CULTUROSITY_PERK_LISTINGS_MORE } from "./0002_culturosity_perks_listings_more";
 
 interface Pack {
   name: string;
@@ -19,57 +20,66 @@ async function culturosityProgram(q: Queryable) {
   return r.rows[0];
 }
 
+/** Insert listing-only Culturosity perks (details pending). Skips any provider+title that already exists. */
+/** `olderByMinutes` keeps earlier packs older than later ones when several packs load in one deploy. */
+async function addListings(q: Queryable, specs: ListingSpec[], olderByMinutes = 0): Promise<number> {
+  const { org_id, program_id } = await culturosityProgram(q);
+  let added = 0;
+  for (let i = 0; i < specs.length; i++) {
+    const s = specs[i];
+    let prov = (await q.query<{ id: string }>(`select id from providers where org_id = $1 and lower(name) = lower($2)`, [org_id, s.provider])).rows[0]?.id;
+    if (!prov) {
+      prov = (
+        await q.query<{ id: string }>(`insert into providers (org_id, name, category, provider_ref) values ($1,$2,$3,$4) returning id`, [
+          org_id,
+          s.provider,
+          s.category,
+          await newProviderRef(q),
+        ])
+      ).rows[0].id;
+    }
+    const exists = await q.query(`select 1 from perks where org_id = $1 and provider_id = $2 and lower(title) = lower($3)`, [org_id, prov, s.title]);
+    if (exists.rows.length) continue;
+    const v = s.value;
+    // Newest first: earlier list entries get later publication times.
+    const publishedAt = new Date(Date.now() - (olderByMinutes + i) * 60_000);
+    const r = await q.query<{ id: string }>(
+      `insert into perks (org_id, provider_id, title, short_description, category, value_type, value_label, value_percent,
+         value_amount_minor, currency, is_ongoing, timezone, redemption_method, redemption_instructions, is_online_only,
+         region, country, eligibility_text, image_path, image_alt, status, published_at, details_pending, public_teaser)
+       values ($1,$2,$3,'',$4,$5,$6,$7,$8,$9,true,'America/Winnipeg','in_person',
+         'Full details and redemption instructions for this perk are coming soon.', false,
+         'MB','Canada','Eligible Culturosity members',$10,$11,'published',$12,true,true)
+       returning id`,
+      [
+        org_id,
+        prov,
+        s.title,
+        s.category,
+        v.type,
+        listingLabel(v),
+        v.type === "percent" ? v.percent : null,
+        v.type === "amount" ? Math.round(v.amount * 100) : null,
+        v.type === "amount" ? "CAD" : null,
+        `/perks/culturosity/${s.slug}.webp`,
+        `${s.provider} — ${s.title}`,
+        publishedAt,
+      ],
+    );
+    await q.query(`insert into program_perks (program_id, perk_id) values ($1,$2) on conflict do nothing`, [program_id, r.rows[0].id]);
+    added++;
+  }
+  return added;
+}
+
 const PACKS: Pack[] = [
   {
     name: "0001_culturosity_perks_listings",
-    async apply(q) {
-      const { org_id, program_id } = await culturosityProgram(q);
-      const n = CULTUROSITY_PERK_LISTINGS.length;
-      let added = 0;
-      for (let i = 0; i < n; i++) {
-        const s = CULTUROSITY_PERK_LISTINGS[i];
-        let prov = (await q.query<{ id: string }>(`select id from providers where org_id = $1 and lower(name) = lower($2)`, [org_id, s.provider])).rows[0]?.id;
-        if (!prov) {
-          prov = (
-            await q.query<{ id: string }>(
-              `insert into providers (org_id, name, category, provider_ref) values ($1,$2,$3,$4) returning id`,
-              [org_id, s.provider, s.category, await newProviderRef(q)],
-            )
-          ).rows[0].id;
-        }
-        const exists = await q.query(`select 1 from perks where org_id = $1 and provider_id = $2 and lower(title) = lower($3)`, [org_id, prov, s.title]);
-        if (exists.rows.length) continue;
-        const v = s.value;
-        // Newest first: earlier list entries get later publication times.
-        const publishedAt = new Date(Date.now() - i * 60_000);
-        const r = await q.query<{ id: string }>(
-          `insert into perks (org_id, provider_id, title, short_description, category, value_type, value_label, value_percent,
-             value_amount_minor, currency, is_ongoing, timezone, redemption_method, redemption_instructions, is_online_only,
-             region, country, eligibility_text, image_path, image_alt, status, published_at, details_pending, public_teaser)
-           values ($1,$2,$3,'',$4,$5,$6,$7,$8,$9,true,'America/Winnipeg','in_person',
-             'Full details and redemption instructions for this perk are coming soon.', false,
-             'MB','Canada','Eligible Culturosity members',$10,$11,'published',$12,true,true)
-           returning id`,
-          [
-            org_id,
-            prov,
-            s.title,
-            s.category,
-            v.type,
-            listingLabel(v),
-            v.type === "percent" ? v.percent : null,
-            v.type === "amount" ? Math.round(v.amount * 100) : null,
-            v.type === "amount" ? "CAD" : null,
-            `/perks/culturosity/${s.slug}.webp`,
-            `${s.provider} — ${s.title}`,
-            publishedAt,
-          ],
-        );
-        await q.query(`insert into program_perks (program_id, perk_id) values ($1,$2) on conflict do nothing`, [program_id, r.rows[0].id]);
-        added++;
-      }
-      return `${added} Culturosity perks added (details pending)`;
-    },
+    apply: async (q) => `${await addListings(q, CULTUROSITY_PERK_LISTINGS, 10)} Culturosity perks added (details pending)`,
+  },
+  {
+    name: "0002_culturosity_perks_listings_more",
+    apply: async (q) => `${await addListings(q, CULTUROSITY_PERK_LISTINGS_MORE)} Culturosity perks added (details pending)`,
   },
 ];
 

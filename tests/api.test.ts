@@ -404,13 +404,18 @@ describe("accounts", () => {
 });
 
 describe("content pack: Culturosity perk listings", () => {
-  it("adds the 35 listings once, shows them publicly with images, and blocks redemption until details arrive", async () => {
+  it("adds the 38 listings once, shows them publicly with images, and blocks redemption until details arrive", async () => {
     const { applyContentPacks } = await import("../server/seed/content");
-    expect((await applyContentPacks(ctx.db))[0]).toContain("35 Culturosity perks added");
+    const log = await applyContentPacks(ctx.db);
+    expect(log[0]).toContain("35 Culturosity perks added");
+    expect(log[1]).toContain("3 Culturosity perks added");
     expect(await applyContentPacks(ctx.db)).toEqual([]); // idempotent
     const pub = (await client(app).get("/public/perks?sort=new")).json.perks.filter((p: any) => !p.is_demo);
-    expect(pub).toHaveLength(35);
-    expect(pub[0].title).toBe("Ram Motorsports Spectacular - Feb 7, 2027"); // "New" order preserved
+    expect(pub).toHaveLength(38);
+    expect(pub.map((p: any) => p.title)).toEqual(expect.arrayContaining(["Tosca", "Happy Hour - Two Taps and a Snack", "BPM X WAG-Qaumajuq"]));
+    expect(pub.filter((p: any) => p.provider_name === "Manitoba Opera")).toHaveLength(3); // joins the existing provider
+    const ram = pub.findIndex((p: any) => p.title === "Ram Motorsports Spectacular - Feb 7, 2027");
+    expect(pub[ram + 1].title).toBe("Ram Motorsports Spectacular - Feb 6, 2027"); // pack order preserved
     expect(pub.every((p: any) => p.image_url?.startsWith("/perks/culturosity/") && p.details_pending)).toBe(true);
     const labels = new Set(pub.map((p: any) => p.value_label));
     for (const l of ["Save 25%", "Free", "BOGO", "Special offer", "Exclusive", "Save $2", "Save $25", "Save $10"]) expect(labels.has(l)).toBe(true);
@@ -422,11 +427,11 @@ describe("content pack: Culturosity perk listings", () => {
     // A Culturosity member (super admin is in the real program) sees details but cannot redeem yet.
     const sa = client(app, "10.7.0.1");
     await sa.signIn("super@demo.culturosity.test");
-    const d = await sa.get(`/perks/${pub[0].id}`);
+    const d = await sa.get(`/perks/${pub[ram].id}`);
     expect(d.json.access).toBe("member");
     expect(d.json.perk.details_pending).toBe(true);
     const progId = d.json.perk.program.id;
-    expect((await sa.post("/redemption-tokens", { programId: progId, perkId: pub[0].id })).status).toBe(409);
-    expect((await sa.post("/events", { event: "use_perk_click", programId: progId, perkId: pub[0].id })).status).toBe(409);
+    expect((await sa.post("/redemption-tokens", { programId: progId, perkId: pub[ram].id })).status).toBe(409);
+    expect((await sa.post("/events", { event: "use_perk_click", programId: progId, perkId: pub[ram].id })).status).toBe(409);
   });
 });
