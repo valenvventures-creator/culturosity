@@ -2030,3 +2030,12 @@ table.data tr.clickable {
 .kanban .card > .spread {
   flex-wrap: nowrap;
 }
+
+[hidden] {
+  display: none !important;
+}
+
+.alert a {
+  color: #0a6b51;
+  font-weight: 600;
+}

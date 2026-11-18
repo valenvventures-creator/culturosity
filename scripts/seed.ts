@@ -17,6 +17,8 @@ const db = await createDbFromConfig(cfg);
 await migrate(db, resolve(process.cwd(), "server/db/migrations"));
 await seedBase(db, { gateCode: process.env.GATE_INITIAL_CODE || null });
 console.log(`[seed] base workspace ready; research records added: ${await seedResearch(db)}`);
+const { applyContentPacks } = await import("../server/seed/content");
+for (const line of await applyContentPacks(db)) console.log(`[seed] content: ${line}`);
 if (demo) {
   const { seedDemo } = await import("../server/seed/demo");
   const r = await seedDemo(db, await createStorageFromConfig(cfg), { password: process.env.SEED_DEMO_PASSWORD || null });

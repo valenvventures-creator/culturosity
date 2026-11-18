@@ -182,7 +182,7 @@ export async function updatePerk(q: Queryable, perkId: string, orgId: string, in
   }
   const cols = Object.keys(values);
   await q.query(
-    `update perks set provider_id = $3, status = $4, updated_at = now(), ${cols.map((c, i) => `${c} = $${i + 5}`).join(", ")}
+    `update perks set provider_id = $3, status = $4, updated_at = now(), details_pending = false, ${cols.map((c, i) => `${c} = $${i + 5}`).join(", ")}
       where id = $1 and org_id = $2`,
     [perkId, orgId, providerId, status, ...Object.values(values)],
   );

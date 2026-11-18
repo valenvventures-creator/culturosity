@@ -154,6 +154,7 @@ export function PerkDetailPage({ perkId, programId, backTo, backLabel }: { perkI
   const online = perk.redemption_method !== "in_person" && perk.redemption_url;
   const inPerson = perk.redemption_method !== "online";
   const limitReached = perk.usage_limit_per_member != null && perk.redemptions_used >= perk.usage_limit_per_member;
+  const pending = Boolean(perk.details_pending);
 
   return (
     <div className="container page">
@@ -184,7 +185,10 @@ export function PerkDetailPage({ perkId, programId, backTo, backLabel }: { perkI
               </span>
             </div>
             {perk.conditions ? <p className="muted" style={{ margin: 0 }}>{perk.conditions}</p> : null}
-            <div className="row">
+            {pending ? (
+              <div className="alert alert-info" role="status">Full details and how to redeem this perk are coming soon. Save it to find it again easily.</div>
+            ) : null}
+            <div className="row" hidden={pending}>
               {online ? (
                 <button className="btn btn-primary btn-lg" onClick={usePerk}>
                   Use Perk <IconExternal size={18} />
@@ -208,7 +212,7 @@ export function PerkDetailPage({ perkId, programId, backTo, backLabel }: { perkI
           <article className="panel">
             <div className="eyebrow">{perk.provider_name}</div>
             <h1 style={{ fontSize: "clamp(1.5rem,3vw,2.2rem)" }}>{perk.title}</h1>
-            <p style={{ whiteSpace: "pre-line" }}>{perk.full_description}</p>
+            {perk.full_description ? <p style={{ whiteSpace: "pre-line" }}>{perk.full_description}</p> : pending ? <p className="muted">The full description is coming soon.</p> : null}
             {perk.promo_code ? (
               <div style={{ margin: "16px 0" }}>
                 <div className="label" style={{ fontWeight: 600, marginBottom: 6 }}>Promo code</div>
@@ -232,7 +236,7 @@ export function PerkDetailPage({ perkId, programId, backTo, backLabel }: { perkI
                 <IconCalendar />
                 <div>
                   <strong>Available</strong>
-                  <div>{window_} <span className="muted">({perk.timezone.replace("_", " ")})</span></div>
+                  <div>{pending && perk.is_ongoing && !perk.ends_at ? "Details coming soon" : <>{window_} <span className="muted">({perk.timezone.replace("_", " ")})</span></>}</div>
                 </div>
               </div>
               {perk.occurrences.length ? (
@@ -353,7 +357,7 @@ export function PerkDetailPage({ perkId, programId, backTo, backLabel }: { perkI
           </section>
 
           {/* 5. Member card */}
-          {inPerson || !online ? (
+          {pending ? null : inPerson || !online ? (
             <MemberCard
               programId={perk.program.id}
               perkId={perk.id}

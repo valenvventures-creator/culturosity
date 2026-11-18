@@ -402,3 +402,31 @@ describe("accounts", () => {
     expect((await b.get("/me")).json.user).toBeNull();
   });
 });
+
+describe("content pack: Culturosity perk listings", () => {
+  it("adds the 35 listings once, shows them publicly with images, and blocks redemption until details arrive", async () => {
+    const { applyContentPacks } = await import("../server/seed/content");
+    expect((await applyContentPacks(ctx.db))[0]).toContain("35 Culturosity perks added");
+    expect(await applyContentPacks(ctx.db)).toEqual([]); // idempotent
+    const pub = (await client(app).get("/public/perks?sort=new")).json.perks.filter((p: any) => !p.is_demo);
+    expect(pub).toHaveLength(35);
+    expect(pub[0].title).toBe("Ram Motorsports Spectacular - Feb 7, 2027"); // "New" order preserved
+    expect(pub.every((p: any) => p.image_url?.startsWith("/perks/culturosity/") && p.details_pending)).toBe(true);
+    const labels = new Set(pub.map((p: any) => p.value_label));
+    for (const l of ["Save 25%", "Free", "BOGO", "Special offer", "Exclusive", "Save $2", "Save $25", "Save $10"]) expect(labels.has(l)).toBe(true);
+    const blufish = pub.filter((p: any) => p.provider_name === "Blufish Japanese Restaurant");
+    expect(blufish).toHaveLength(5);
+    const providers = await ctx.db.query<{ n: number }>(`select count(*)::int as n from providers where name = 'Blufish Japanese Restaurant'`);
+    expect(providers.rows[0].n).toBe(1); // one provider record, several offers
+
+    // A Culturosity member (super admin is in the real program) sees details but cannot redeem yet.
+    const sa = client(app, "10.7.0.1");
+    await sa.signIn("super@demo.culturosity.test");
+    const d = await sa.get(`/perks/${pub[0].id}`);
+    expect(d.json.access).toBe("member");
+    expect(d.json.perk.details_pending).toBe(true);
+    const progId = d.json.perk.program.id;
+    expect((await sa.post("/redemption-tokens", { programId: progId, perkId: pub[0].id })).status).toBe(409);
+    expect((await sa.post("/events", { event: "use_perk_click", programId: progId, perkId: pub[0].id })).status).toBe(409);
+  });
+});

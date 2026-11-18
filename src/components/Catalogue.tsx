@@ -35,9 +35,11 @@ export interface ListingPerk {
   source_org_kind?: string;
   next_occurrence: string | null;
   upcoming_occurrences: number;
+  details_pending?: boolean;
 }
 
 function availability(p: ListingPerk) {
+  if (p.details_pending && p.is_ongoing && !p.ends_at) return "Details coming soon";
   return formatWindow(p.starts_at, p.ends_at, p.is_ongoing, p.timezone);
 }
 function place(p: ListingPerk) {
@@ -160,7 +162,7 @@ interface Filters {
   from: string;
   to: string;
 }
-const EMPTY: Filters = { q: "", sort: "az", favourites: false, onlyNew: false, category: "", city: "", region: "", country: "", mode: "", valueType: "", from: "", to: "" };
+const EMPTY: Filters = { q: "", sort: "new", favourites: false, onlyNew: false, category: "", city: "", region: "", country: "", mode: "", valueType: "", from: "", to: "" };
 
 /**
  * Shared catalogue used for Culturosity Perks and company program catalogues.
@@ -228,7 +230,7 @@ export function CatalogueView({
   const perks = data?.perks ?? [];
   const cities = useMemo(() => [...new Set(perks.map((p) => p.city).filter(Boolean))].sort() as string[], [perks]);
   const activeFilterCount = ["category", "city", "region", "country", "mode", "valueType", "from", "to"].filter((k) => (f as any)[k]).length;
-  const anyFilter = activeFilterCount > 0 || f.q || f.favourites || f.onlyNew;
+  const anyFilter = activeFilterCount > 0 || f.q || f.favourites;
 
   return (
     <section aria-labelledby="catalogue-heading">
@@ -259,13 +261,14 @@ export function CatalogueView({
                 <IconHeart size={16} /> Favourites
               </button>
             ) : null}
-            <button className="chip" aria-pressed={f.onlyNew} onClick={() => setF((x) => ({ ...x, onlyNew: !x.onlyNew }))}>
+            {/* New and A–Z are alternative sort orders (newest publication first / provider A–Z), as in the Culturosity app. */}
+            <button className="chip" aria-pressed={f.sort === "new"} onClick={() => setF((x) => ({ ...x, sort: "new" }))}>
               New
             </button>
             <button className="chip" aria-pressed={f.sort === "az"} onClick={() => setF((x) => ({ ...x, sort: "az" }))}>
               A–Z
             </button>
-            <button className="chip" aria-pressed={f.sort === "ending"} onClick={() => setF((x) => ({ ...x, sort: x.sort === "ending" ? "az" : "ending" }))}>
+            <button className="chip" aria-pressed={f.sort === "ending"} onClick={() => setF((x) => ({ ...x, sort: x.sort === "ending" ? "new" : "ending" }))}>
               Ending soon
             </button>
             <button className="chip" aria-expanded={showFilters} aria-controls="filters-panel" onClick={() => setShowFilters((v) => !v)}>

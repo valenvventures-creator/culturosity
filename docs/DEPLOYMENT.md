@@ -41,6 +41,7 @@ The build command (`npm run netlify:build`) runs `scripts/netlify-prebuild.ts` b
 
 - applies migrations,
 - runs the safe base seed (Culturosity workspace, settings, sourced research records — no demo data),
+- applies any new **content packs** (`server/seed/content/`, recorded in `content_packs`), e.g. Culturosity's own perk listings,
 - stores the hashed gate code **only if** `GATE_INITIAL_CODE` is set and no code exists yet,
 - creates or promotes the super admin **only if** `BOOTSTRAP_ADMIN_EMAIL` is set.
 

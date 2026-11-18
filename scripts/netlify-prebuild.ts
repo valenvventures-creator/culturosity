@@ -11,6 +11,7 @@ import { migrate } from "../server/db/migrate";
 import { seedBase, initGate } from "../server/seed/base";
 import { seedResearch } from "../server/seed/research";
 import { bootstrapAdmin } from "../server/seed/bootstrap";
+import { applyContentPacks } from "../server/seed/content";
 import { emailSchema } from "../shared/schemas";
 import { ZodError } from "zod";
 
@@ -29,6 +30,7 @@ try {
   await seedBase(db);
   const added = await seedResearch(db);
   console.log(`[prebuild] base workspace ready; research records added: ${added}`);
+  for (const line of await applyContentPacks(db)) console.log(`[prebuild] content: ${line}`);
   const gateCode = clean(process.env.GATE_INITIAL_CODE);
   if (gateCode && !/^\d{4,20}$/.test(gateCode)) {
     // Never fail the deploy (or echo the value) over a malformed first-deploy variable.

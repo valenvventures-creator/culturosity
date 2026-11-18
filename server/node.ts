@@ -15,6 +15,8 @@ if (ran.length) console.log(`[db] applied migrations: ${ran.join(", ")}`);
 if (deps.db.kind === "pglite") {
   await seedBase(deps.db, { gateCode: process.env.GATE_INITIAL_CODE || null });
   const n = await seedResearch(deps.db);
+  const { applyContentPacks } = await import("./seed/content");
+  for (const line of await applyContentPacks(deps.db)) console.log(`[seed] content: ${line}`);
   if (n) console.log(`[seed] research starting set: ${n} records`);
   if (cfg.mode === "demo" && process.env.SKIP_DEMO_SEED !== "1") {
     const { seedDemo } = await import("./seed/demo");

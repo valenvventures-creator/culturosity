@@ -13,7 +13,7 @@ export const perkRoutes = new Hono<AppEnv>();
 
 const LIST_COLUMNS = `pk.id, pk.title, pk.short_description, pk.category, pk.tags, pk.value_type, pk.value_label, pk.starts_at, pk.ends_at,
   pk.is_ongoing, pk.timezone, pk.city, pk.region, pk.country, pk.is_online_only, pk.redemption_method, pk.published_at, pk.is_demo,
-  pk.image_asset_id, pk.image_alt, pk.status, pv.id as provider_id, pv.name as provider_name, pv.logo_asset_id as provider_logo_asset_id,
+  pk.image_asset_id, pk.image_path, pk.details_pending, pk.image_alt, pk.status, pv.id as provider_id, pv.name as provider_name, pv.logo_asset_id as provider_logo_asset_id,
   o.name as source_org_name, o.kind as source_org_kind,
   (select min(po.starts_at) from perk_occurrences po where po.perk_id = pk.id and coalesce(po.ends_at, po.starts_at) > now()) as next_occurrence,
   (select count(*)::int from perk_occurrences po where po.perk_id = pk.id and coalesce(po.ends_at, po.starts_at) > now()) as upcoming_occurrences`;
@@ -58,7 +58,7 @@ function filterSql(f: ListFilters, params: unknown[]): string {
 function shapeListing(row: any, newCutoff: number) {
   return {
     ...row,
-    image_url: row.image_asset_id ? `/api/assets/${row.image_asset_id}` : null,
+    image_url: row.image_asset_id ? `/api/assets/${row.image_asset_id}` : row.image_path ?? null,
     provider_logo_url: row.provider_logo_asset_id ? `/api/assets/${row.provider_logo_asset_id}` : null,
     is_new: row.published_at ? new Date(row.published_at).getTime() >= newCutoff : false,
   };
@@ -165,7 +165,7 @@ async function loadDetail(c: Ctx, perkId: string, access: ProgramAccess) {
   return {
     ...p,
     effective_status: effectiveStatus(p),
-    image_url: p.image_asset_id ? `/api/assets/${p.image_asset_id}` : null,
+    image_url: p.image_asset_id ? `/api/assets/${p.image_asset_id}` : p.image_path ?? null,
     provider_logo_url: p.provider_logo_asset_id ? `/api/assets/${p.provider_logo_asset_id}` : null,
     occurrences: occ.rows,
     images: imgs.rows.map((i: any) => ({ url: `/api/assets/${i.asset_id}`, alt: i.alt })),
@@ -233,13 +233,17 @@ async function assertVisible(c: Ctx, programId: string, perkId: string) {
   if (!access) throw notFound();
   const r = await db.query<any>(
     `select pk.id, pk.provider_id, pk.is_demo, pk.redemption_url, pk.redemption_method, pk.usage_limit_per_member, pk.title,
-            pk.value_label, pk.org_id
+            pk.value_label, pk.org_id, pk.details_pending
        from program_perks pp join perks pk on pk.id = pp.perk_id
       where pp.program_id = $1 and pp.perk_id = $2 and pp.status = 'active' and ${LIVE_PERK_SQL}`,
     [programId, perkId],
   );
   if (!r.rows[0]) throw notFound("This offer is not currently available.");
   return { user, access, perk: r.rows[0] };
+}
+
+function assertDetailsReady(perk: { details_pending: boolean }) {
+  if (perk.details_pending) throw new AppError(409, "details_pending", "Full details and redemption instructions for this perk are coming soon.");
 }
 
 perkRoutes.post("/favourites", async (c) => {
@@ -266,6 +270,7 @@ perkRoutes.post("/events", async (c) => {
   if (event !== "use_perk_click" && event !== "share") throw badRequest("Unsupported event.");
   if (!programId || !perkId) throw badRequest("programId and perkId are required.");
   const { user, access, perk } = await assertVisible(c, programId, perkId);
+  if (event === "use_perk_click") assertDetailsReady(perk);
   const { db } = c.get("deps");
   await rateLimit(db, `events:${user.id}`, 300, 3600);
   await track(db, { event, userId: user.id, orgId: access.org_id, programId, perkId, providerId: perk.provider_id, isDemo: perk.is_demo });
@@ -277,6 +282,7 @@ perkRoutes.post("/redemption-tokens", async (c) => {
   const { programId, perkId } = (await c.req.json().catch(() => ({}))) as { programId?: string; perkId?: string };
   if (!programId || !perkId) throw badRequest("programId and perkId are required.");
   const { user, access, perk } = await assertVisible(c, programId, perkId);
+  assertDetailsReady(perk);
   const { db } = c.get("deps");
   await rateLimit(db, `rtoken:${user.id}`, 30, 3600);
   if (perk.usage_limit_per_member) {

@@ -99,7 +99,7 @@ manageRoutes.get("/orgs/:slug/perks", async (c) => {
   const { db } = c.get("deps");
   const r = await db.query<any>(
     `select p.id, p.title, p.value_label, p.status, p.starts_at, p.ends_at, p.is_ongoing, p.timezone, p.published_at, p.updated_at,
-            p.category, p.redemption_method, p.is_demo, p.provider_id, pv.name as provider_name, p.image_asset_id,
+            p.category, p.redemption_method, p.is_demo, p.provider_id, pv.name as provider_name, p.image_asset_id, p.image_path, p.details_pending,
             coalesce((select json_agg(json_build_object('id', pr.id, 'name', pr.name, 'status', pp.status))
                         from program_perks pp join programs pr on pr.id = pp.program_id where pp.perk_id = p.id), '[]') as programs,
             (select count(*)::int from redemptions r where r.perk_id = p.id) as verified_redemptions
@@ -110,7 +110,7 @@ manageRoutes.get("/orgs/:slug/perks", async (c) => {
   );
   const filter = c.req.query("status");
   const rows = r.rows
-    .map((p) => ({ ...p, effective_status: effectiveStatus(p), image_url: p.image_asset_id ? `/api/assets/${p.image_asset_id}` : null }))
+    .map((p) => ({ ...p, effective_status: effectiveStatus(p), image_url: p.image_asset_id ? `/api/assets/${p.image_asset_id}` : p.image_path ?? null }))
     .filter((p) => !filter || p.effective_status === filter);
   return c.json({ perks: rows });
 });
@@ -206,7 +206,7 @@ manageRoutes.get("/orgs/:slug/perks/:id", async (c) => {
     allowDistribution: p.allow_distribution,
   };
   return c.json({
-    perk: { id: p.id, status: p.status, effective_status: effectiveStatus(p), provider_ref: p.provider_ref, provider_pos_reference: p.provider_pos_reference, is_demo: p.is_demo, programs: programs.rows, published_at: p.published_at },
+    perk: { id: p.id, status: p.status, details_pending: p.details_pending, image_path: p.image_path, effective_status: effectiveStatus(p), provider_ref: p.provider_ref, provider_pos_reference: p.provider_pos_reference, is_demo: p.is_demo, programs: programs.rows, published_at: p.published_at },
     form,
   });
 });
