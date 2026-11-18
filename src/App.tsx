@@ -13,6 +13,7 @@ import {
   ServicesPage,
   SubmitPerkPage,
 } from "./pages/public";
+import { PrivacyPage, TermsPage } from "./pages/legal";
 import { AccountPage, DevMailboxPage, ForgotPage, InvitePage, ResetPage, SignInPage, SignUpPage, StartWorkspacePage, VerifyPage } from "./pages/auth";
 
 // Heavier admin areas are code-split.
@@ -92,6 +93,8 @@ const router = createBrowserRouter(
       { path: "/services", element: <ServicesPage /> },
       { path: "/demo", element: <DemoPage /> },
       { path: "/saved", element: <SavedPage /> },
+      { path: "/privacy", element: <PrivacyPage /> },
+      { path: "/terms", element: <TermsPage /> },
       { path: "/auth/signin", element: <SignInPage /> },
       { path: "/auth/signup", element: <SignUpPage /> },
       { path: "/auth/verify", element: <VerifyPage /> },

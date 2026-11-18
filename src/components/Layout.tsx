@@ -226,6 +226,9 @@ export function SiteFooter() {
         <p style={{ marginTop: 28, fontSize: ".8rem" }}>
           © {new Date().getFullYear()} Culturosity. Offers are provided by participating providers; availability and terms vary by program.
         </p>
+        <p style={{ marginTop: 8, fontSize: ".8rem" }}>
+          <Link to="/privacy">Privacy Policy</Link> · <Link to="/terms">Terms of Use</Link>
+        </p>
       </div>
     </footer>
   );
