@@ -468,6 +468,50 @@ describe("content packs: Culturosity perk listings and details", () => {
   });
 });
 
+describe("members & roles: owners and super admins are protected", () => {
+  it("lets owners manage people they added, but nobody can suspend, remove or re-role an owner or super admin", async () => {
+    const owner = client(app, "10.8.0.1");
+    await owner.signIn("admin@northwind.example"); // Northwind's owner
+    const sa = client(app, "10.8.0.2");
+    await sa.signIn("super@demo.culturosity.test");
+    const list = (await owner.get("/orgs/northwind-demo/members")).json.members;
+    const ownerRow = list.find((m: any) => m.email === "admin@northwind.example");
+    const memberRow = list.find((m: any) => m.email === "member@northwind.example");
+    expect(ownerRow.role).toBe("owner");
+    expect(memberRow.is_super_admin).toBe(false);
+
+    // Make the super admin a member of this workspace so we can check they're protected too.
+    const sup = await ctx.db.query<{ id: string }>(`select id from app_users where email = 'super@demo.culturosity.test'`);
+    const nw = await ctx.db.query<{ id: string }>(`select id from organizations where slug = 'northwind-demo'`);
+    const sm = await ctx.db.query<{ id: string }>(
+      `insert into memberships (user_id, org_id, role) values ($1,$2,'admin') on conflict (user_id, org_id) do update set role = 'admin' returning id`,
+      [sup.rows[0].id, nw.rows[0].id],
+    );
+    const superRow = (await owner.get("/orgs/northwind-demo/members")).json.members.find((m: any) => m.id === sm.rows[0].id);
+    expect(superRow.is_super_admin).toBe(true);
+
+    // The owner can suspend, reactivate and change the role of someone they added.
+    expect((await owner.patch(`/orgs/northwind-demo/members/${memberRow.id}`, { status: "suspended" })).status).toBe(200);
+    expect((await owner.patch(`/orgs/northwind-demo/members/${memberRow.id}`, { status: "active" })).status).toBe(200);
+    expect((await owner.patch(`/orgs/northwind-demo/members/${memberRow.id}`, { role: "admin" })).status).toBe(200);
+    expect((await owner.patch(`/orgs/northwind-demo/members/${memberRow.id}`, { role: "member" })).status).toBe(200);
+
+    // Nobody — not even a super admin — can suspend, remove or demote an owner here.
+    for (const body of [{ status: "suspended" }, { status: "removed" }, { role: "member" }])
+      expect((await sa.patch(`/orgs/northwind-demo/members/${ownerRow.id}`, body)).status).toBe(403);
+    // A super admin in the workspace can't be suspended or removed by the owner.
+    for (const body of [{ status: "suspended" }, { status: "removed" }, { role: "member" }])
+      expect((await owner.patch(`/orgs/northwind-demo/members/${superRow.id}`, body)).status).toBe(403);
+
+    // Only super admins can create owners (by role change or invitation).
+    expect((await owner.patch(`/orgs/northwind-demo/members/${memberRow.id}`, { role: "owner" })).status).toBe(403);
+    expect((await owner.post("/orgs/northwind-demo/invitations", { email: "new-owner@northwind.example", role: "owner" })).status).toBe(403);
+    expect((await owner.post("/orgs/northwind-demo/invitations", { email: "new-admin@northwind.example", role: "admin" })).status).toBe(201);
+
+    await ctx.db.query(`delete from memberships where id = $1`, [sm.rows[0].id]);
+  });
+});
+
 describe("workspace lifecycle (Culturosity super admins only)", () => {
   it("only a super admin can pause, resume and delete a client workspace", async () => {
     const owner = client(app, "10.9.0.1");

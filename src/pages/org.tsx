@@ -375,6 +375,8 @@ export function ManageMembers() {
   const qc = useQueryClient();
   const toast = useToast();
   const org = useOrg(orgSlug).data;
+  const { data: me } = useMe();
+  const superAdmin = Boolean(me?.grants?.includes("super_admin"));
   const { data, isLoading, error } = useQuery<any>({ queryKey: ["members", orgSlug], queryFn: () => api.get(`/orgs/${orgSlug}/members`) });
   const [invite, setInvite] = useState({ email: "", role: "member", programId: "" });
   const [inviteErr, setInviteErr] = useState<Record<string, string>>({});
@@ -418,7 +420,7 @@ export function ManageMembers() {
               <option value="member">Member</option>
               <option value="provider_manager">Provider manager</option>
               <option value="admin">Administrator</option>
-              <option value="owner">Owner</option>
+              {superAdmin ? <option value="owner">Owner</option> : null}
             </SelectField>
             <SelectField label="Program" value={invite.programId} onChange={(e) => setInvite({ ...invite, programId: e.target.value })}>
               <option value="">Default program</option>
@@ -470,17 +472,29 @@ export function ManageMembers() {
             <table className="data">
               <thead><tr><th>Person</th><th>Role</th><th>Programs</th><th>Status</th><th /></tr></thead>
               <tbody>
-                {data.members.map((m: any) => (
+                {data.members.map((m: any) => {
+                  // Owners and Culturosity super admins are protected: no role change, suspend or remove.
+                  const locked = m.role === "owner" || m.is_super_admin || m.email === me?.user?.email;
+                  return (
                   <tr key={m.id}>
                     <td><div style={{ fontWeight: 600 }}>{m.display_name}</div><div className="muted" style={{ fontSize: ".85rem" }}>{m.email}</div></td>
                     <td>
-                      <label className="sr-only" htmlFor={`role-${m.id}`}>Role for {m.email}</label>
-                      <select id={`role-${m.id}`} className="select" style={{ minHeight: 38 }} value={m.role} onChange={(e) => change(m.id, { role: e.target.value })}>
-                        <option value="member">Member</option>
-                        <option value="provider_manager">Provider manager</option>
-                        <option value="admin">Administrator</option>
-                        <option value="owner">Owner</option>
-                      </select>
+                      {locked ? (
+                        <div>
+                          <strong>{m.role === "owner" ? "Owner" : m.role === "admin" ? "Administrator" : m.role === "provider_manager" ? "Provider manager" : "Member"}</strong>
+                          {m.is_super_admin ? <div className="muted" style={{ fontSize: ".8rem" }}>Culturosity super admin</div> : null}
+                        </div>
+                      ) : (
+                        <>
+                          <label className="sr-only" htmlFor={`role-${m.id}`}>Role for {m.email}</label>
+                          <select id={`role-${m.id}`} className="select" style={{ minHeight: 38 }} value={m.role} onChange={(e) => change(m.id, { role: e.target.value })}>
+                            <option value="member">Member</option>
+                            <option value="provider_manager">Provider manager</option>
+                            <option value="admin">Administrator</option>
+                            {superAdmin ? <option value="owner">Owner</option> : null}
+                          </select>
+                        </>
+                      )}
                     </td>
                     <td style={{ minWidth: 180 }}>
                       {(org?.programs ?? []).map((p: any) => (
@@ -496,15 +510,22 @@ export function ManageMembers() {
                     </td>
                     <td><StatusPill status={m.status === "active" ? "published" : "paused"} /> <span className="sr-only">{m.status}</span></td>
                     <td>
-                      {m.status === "active" ? (
-                        <button className="btn btn-ghost btn-sm" onClick={() => change(m.id, { status: "suspended" })}>Suspend</button>
+                      {locked ? (
+                        <span className="muted" style={{ fontSize: ".82rem" }}>{m.email === me?.user?.email ? "You" : "Protected"}</span>
                       ) : (
-                        <button className="btn btn-ghost btn-sm" onClick={() => change(m.id, { status: "active" })}>Reactivate</button>
+                        <>
+                          {m.status === "active" ? (
+                            <button className="btn btn-ghost btn-sm" onClick={() => change(m.id, { status: "suspended" })}>Suspend</button>
+                          ) : (
+                            <button className="btn btn-ghost btn-sm" onClick={() => change(m.id, { status: "active" })}>Reactivate</button>
+                          )}
+                          <button className="btn btn-ghost btn-sm" onClick={() => confirm(`Remove ${m.email}?`) && change(m.id, { status: "removed" })}>Remove</button>
+                        </>
                       )}
-                      <button className="btn btn-ghost btn-sm" onClick={() => confirm(`Remove ${m.email}?`) && change(m.id, { status: "removed" })}>Remove</button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

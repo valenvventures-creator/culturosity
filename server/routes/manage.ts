@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv, Ctx } from "../context";
-import { orgBySlug, requireGrant, requireOrgRole, type OrgRole } from "../lib/authz";
+import { isSuperAdmin, orgBySlug, requireGrant, requireOrgRole, type OrgRole } from "../lib/authz";
 import { badRequest, forbidden, fromZod, notFound, conflict } from "../lib/errors";
 import { audit, rateLimit } from "../lib/security";
 import { passwordAuth } from "../lib/auth";
@@ -409,7 +409,8 @@ manageRoutes.get("/orgs/:slug/members", async (c) => {
   const [members, invites, rules] = await Promise.all([
     db.query(
       `select m.id, m.role, m.status, m.created_at, m.eligible_from, m.eligible_until, u.email, u.display_name,
-              coalesce((select json_agg(pm.program_id) from program_memberships pm where pm.membership_id = m.id), '[]') as program_ids
+              coalesce((select json_agg(pm.program_id) from program_memberships pm where pm.membership_id = m.id), '[]') as program_ids,
+              exists(select 1 from platform_grants g where g.user_id = m.user_id and g.grant_name = 'super_admin' and g.revoked_at is null) as is_super_admin
          from memberships m join app_users u on u.id = m.user_id where m.org_id = $1 and m.status <> 'removed' order by u.email`,
       [org.id],
     ),
@@ -446,7 +447,8 @@ manageRoutes.post("/orgs/:slug/invitations", async (c) => {
   const parsed = inviteSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) throw fromZod(parsed.error);
   const { email, role, programId } = parsed.data;
-  if ((role === "owner" || role === "admin") && membership?.role !== "owner" && !elevated) throw forbidden("Only owners can invite owners or administrators.");
+  if (role === "owner" && !(await isSuperAdmin(c.get("deps").db, user.id))) throw forbidden("Only Culturosity super admins can make someone an owner.");
+  if (role === "admin" && membership?.role !== "owner" && !elevated) throw forbidden("Only owners can invite administrators.");
   const { db, config } = c.get("deps");
   await rateLimit(db, `invite:${user.id}`, 200, 3600);
   if (programId) {
@@ -502,6 +504,11 @@ manageRoutes.patch("/orgs/:slug/members/:id", async (c) => {
     const target = r.rows[0];
     if (!target) throw notFound();
     if (target.user_id === user.id && (body.role || body.status)) throw badRequest("You cannot change your own role or status.");
+    // Owners and Culturosity super admins are protected: they can't be suspended, removed or re-roled here.
+    const targetIsSuper = await isSuperAdmin(q, target.user_id);
+    if ((target.role === "owner" || targetIsSuper) && (body.role || body.status))
+      throw forbidden("Owners and Culturosity super admins can’t be suspended, removed or have their role changed.");
+    if (body.role === "owner" && !(await isSuperAdmin(q, user.id))) throw forbidden("Only Culturosity super admins can make someone an owner.");
     const isOwner = membership?.role === "owner" || elevated;
     if ((target.role === "owner" || target.role === "admin" || body.role === "owner" || body.role === "admin") && !isOwner)
       throw forbidden("Only owners can change administrator or owner roles.");
