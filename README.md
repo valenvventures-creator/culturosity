@@ -144,10 +144,10 @@ Demo workspaces are labelled and their events are flagged `is_demo` and excluded
 
 GitHub + Netlify instructions, environment variables and post-deploy checks are in **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. In short:
 
-1. Create a hosted Postgres and set `DATABASE_URL`.
-2. Connect the repo in Netlify and set the server environment variables. Never prefix secrets with `VITE_`.
-3. Deploy. The build applies migrations.
-4. Run the base seed, `admin:bootstrap` and `gate:init` once against the production database.
+1. Import the GitHub repo in Netlify and add Netlify DB (or set `DATABASE_URL` to any hosted Postgres).
+2. Set the server environment variables. Never prefix secrets with `VITE_`. For the first deploy, also set `GATE_INITIAL_CODE` and `BOOTSTRAP_ADMIN_EMAIL`/`BOOTSTRAP_ADMIN_PASSWORD`.
+3. Deploy. The build migrates, seeds the base workspace and research records, stores the gate hash and creates your admin. All steps are idempotent.
+4. Remove the two bootstrap secrets from Netlify.
 
 ## More documentation
 

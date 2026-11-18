@@ -14,7 +14,7 @@
 
 `netlify.toml` already defines:
 
-- build command `npm run netlify:build` (applies migrations when `DATABASE_URL` is set, then type-checks and builds),
+- build command `npm run netlify:build` (database setup when a database URL is set — see §3 — then type-check and build),
 - publish directory `dist`,
 - the `/api/*` function (declared `config.path` takes precedence over the SPA fallback `/* → /index.html 200`),
 - security headers including a strict Content-Security-Policy,
@@ -26,27 +26,48 @@ Set these **environment variables** in Netlify (Site settings → Environment va
 | --- | --- |
 | `APP_MODE` | `production` |
 | `APP_BASE_URL` | `https://your-site.netlify.app` (or custom domain) — used for links and secure cookies |
-| `DATABASE_URL` | pooled Postgres URL (`?sslmode=require`) |
+| `DATABASE_URL` | pooled Postgres URL (`?sslmode=require`); not needed with Netlify DB, which sets `NETLIFY_DATABASE_URL` |
 | `DATABASE_POOL_MAX` | `3` |
 | `STORAGE_DRIVER` | `netlify-blobs` |
 | `RESEND_API_KEY`, `EMAIL_FROM` | optional, for real email delivery |
 | `ANTHROPIC_API_KEY`, `AI_MODEL`, `AI_EFFORT` | optional, for AI drafts |
 | `GATE_IDLE_MINUTES`, `GATE_ABSOLUTE_MINUTES` | optional overrides (30 / 240) |
 
-Do **not** set `GATE_INITIAL_CODE`, `BOOTSTRAP_ADMIN_*` or `SEED_DEMO_PASSWORD` as permanent site variables; use them once from a trusted machine (below).
+Never set `SEED_DEMO_PASSWORD` on a production site. `GATE_INITIAL_CODE` and `BOOTSTRAP_ADMIN_*` are for the first deploy only (§3) — delete them afterwards.
 
-## 3. One-time production bootstrap (from a trusted machine)
+## 3. First deploy entirely from the Netlify dashboard (no terminal)
+
+The build command (`npm run netlify:build`) runs `scripts/netlify-prebuild.ts` before building. When a database URL is present it:
+
+- applies migrations,
+- runs the safe base seed (Culturosity workspace, settings, sourced research records — no demo data),
+- stores the hashed gate code **only if** `GATE_INITIAL_CODE` is set and no code exists yet,
+- creates or promotes the super admin **only if** `BOOTSTRAP_ADMIN_EMAIL` is set.
+
+Every step is idempotent, so it is safe on every deploy.
+
+1. **Import the site:** Netlify → *Add new project* → *Import an existing project* → GitHub → `valenvventures-creator/culturosity` (authorise Netlify's GitHub app for the repo). Netlify reads `netlify.toml`; leave the build settings as detected.
+2. **Database — Netlify DB:** on the site, add Netlify DB (Neon) — from the site's *Extensions*/*Database* section in the dashboard, or with `npx netlify db init` from a checkout. It sets `NETLIFY_DATABASE_URL`, which the app reads automatically. Netlify DB databases must be **claimed into a Neon account** within the period Netlify shows, or they are removed — claim it right away. (Any other Postgres works too: set `DATABASE_URL` instead.)
+3. **Environment variables** (Site configuration → Environment variables), as in the table above, plus for the first deploy only:
+
+   | Variable | Value |
+   | --- | --- |
+   | `GATE_INITIAL_CODE` | `1234567890` |
+   | `BOOTSTRAP_ADMIN_EMAIL` | your admin email |
+   | `BOOTSTRAP_ADMIN_PASSWORD` | a strong unique password (10+ chars) — mark as secret |
+
+4. **Deploy** (*Deploys → Trigger deploy*). The deploy log shows `[prebuild] migrations applied`, `gate code hash stored` and `super admin created`.
+5. **Delete `BOOTSTRAP_ADMIN_PASSWORD` and `GATE_INITIAL_CODE`** from the environment variables. Later deploys leave the stored hash and the admin untouched.
+6. Sign in at `/auth/signin`, open **Admin Research & Sales**, unlock, and rotate the code in **Access settings** when ready.
+
+### Alternative: bootstrap from a terminal
 
 ```bash
 export APP_MODE=production DATABASE_URL='postgres://…'
 ```
 
 ```bash
-npm run db:migrate
-```
-
-```bash
-npm run db:seed
+npm run db:migrate && npm run db:seed
 ```
 
 ```bash
@@ -57,9 +78,7 @@ BOOTSTRAP_ADMIN_EMAIL=you@yourdomain.com BOOTSTRAP_ADMIN_PASSWORD='a-strong-uniq
 GATE_INITIAL_CODE=1234567890 npm run gate:init
 ```
 
-Then sign in, open **Admin Research & Sales**, unlock, and rotate the code from **Access settings** when you are ready to move away from the requested initial value.
-
-The production seed creates the Culturosity workspace, settings (`hello@culturosity.io`, the configured demo-booking link) and the sourced research records. It does **not** create demo users or sample offers. `db:seed:demo` refuses to run when `APP_MODE=production`; use a separate demo database/site with `APP_MODE=demo` if you want a hosted demonstration.
+The production seed creates no demo users or sample offers. `db:seed:demo` refuses to run when `APP_MODE=production`; use a separate demo database/site with `APP_MODE=demo` for a hosted demonstration.
 
 ## 4. Post-deploy checks
 
