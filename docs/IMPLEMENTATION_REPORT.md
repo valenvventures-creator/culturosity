@@ -45,6 +45,12 @@ Date: 2026-11-18.
 - Each Request a Proposal is saved to the Service queue, then (when Resend is configured) emailed to the address in **Admin → Access settings → Proposal request notifications**, with Reply-To set to the requester. If no address is set, all active non-demo super admins are notified. The address is stored in the database, not in source code.
 - The requester gets a fixed-wording "we received your request" confirmation (no submitted free text, so the public form can't be used to relay arbitrary content). Demo-workspace requests send nothing.
 
+### Sales Preview (branded demo)
+
+- **Admin Research & Sales → Preview** (salespeople and super admins): enter a prospect's company name, upload their logo, pick three colours (header & navigation, value badge, buttons & highlights — with presets and "Match colours to logo"), and write their About text and optional Privacy Policy / Terms links.
+- A tablet and a phone update live, side by side, showing Perks, Details (with the prospect's logo on the member card) and an About screen modelled on the Culturosity app's About page. Tapping through either device keeps both in step; "Presentation view" hides the controls and enlarges the devices.
+- Sample perks are a shuffled selection of real listings from the public catalogue. Everything else stays in the salesperson's browser (localStorage) — nothing is uploaded, saved on the server or published.
+
 ## Tests run
 
 - `npm test`: 30 tests passed.

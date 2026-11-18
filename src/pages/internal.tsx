@@ -6,6 +6,7 @@ import { useMe, isInternal } from "../lib/session";
 import { AppShell, PageHeader } from "../components/AppShell";
 import { Checkbox, Drawer, EmptyState, ErrorAlert, SelectField, Spinner, Stat, TextArea, TextField, useDocumentTitle, useToast, DotField, Logo } from "../components/ui";
 import { IconExternal, IconLock } from "../components/Icons";
+import { ColourField, DEFAULT_BRAND, DevicePreview, PRESETS, Swatches, coloursFromLogo, readLogo, type BrandState } from "../components/BrandPreview";
 import { BottomNav, DemoBanner, SiteHeader } from "../components/Layout";
 import {
   OUTREACH_CHANNELS,
@@ -44,7 +45,7 @@ export function InternalLayout() {
   return (
     <AppShell
       sections={[
-        { title: "Internal", items: [{ to: `${B}/overview`, label: "Overview" }, { to: `${B}/research`, label: "Research Directory" }, { to: `${B}/outreach`, label: "Sales Outreach" }, { to: `${B}/pipeline`, label: "Pipeline" }, { to: `${B}/demo-guide`, label: "Demo Guide" }] },
+        { title: "Internal", items: [{ to: `${B}/overview`, label: "Overview" }, { to: `${B}/research`, label: "Research Directory" }, { to: `${B}/outreach`, label: "Sales Outreach" }, { to: `${B}/pipeline`, label: "Pipeline" }, { to: `${B}/demo-guide`, label: "Demo Guide" }, { to: `${B}/preview`, label: "Preview" }] },
         // Salespeople see research and sales only; the rest is for super admins.
         me.grants?.includes("super_admin")
           ? { title: "Operations", items: [{ to: `${B}/services`, label: "Service queue" }, { to: `${B}/workspaces`, label: "Client workspaces" }, { to: `/app/culturosity/manage`, label: "Culturosity catalogue" }, { to: `${B}/team`, label: "Sales team" }, { to: `${B}/settings`, label: "Access settings" }] }
@@ -1050,6 +1051,154 @@ export function DemoGuidePage() {
           </li>
         ))}
       </ol>
+    </Wrap>
+  );
+}
+
+// ======================= Preview (branded demo) =======================
+const PREVIEW_KEY = "cul:brand-preview";
+
+export function PreviewPage() {
+  useDocumentTitle("Preview");
+  const toast = useToast();
+  const [brand, setBrand] = useState<BrandState>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(PREVIEW_KEY) || "null");
+      return saved ? { ...DEFAULT_BRAND, ...saved } : DEFAULT_BRAND;
+    } catch {
+      return DEFAULT_BRAND;
+    }
+  });
+  const [screen, setScreen] = useState<"perks" | "details" | "about">("perks");
+  const [seed, setSeed] = useState(1);
+  const [logoErr, setLogoErr] = useState<string | null>(null);
+  const [present, setPresent] = useState(false);
+  // Kept in this browser only, so a salesperson can prepare a demo ahead of time.
+  useEffect(() => {
+    try {
+      localStorage.setItem(PREVIEW_KEY, JSON.stringify(brand));
+    } catch {
+      /* storage full or blocked: preview still works */
+    }
+  }, [brand]);
+  const set = (patch: Partial<BrandState>) => setBrand((b) => ({ ...b, ...patch }));
+
+  async function onLogo(file: File | undefined) {
+    if (!file) return;
+    setLogoErr(null);
+    try {
+      const logo = await readLogo(file);
+      set({ logo });
+    } catch (e: any) {
+      setLogoErr(e.message);
+    }
+  }
+
+  const controls = (
+    <div className="bp-controls">
+      <section className="panel">
+        <h2 className="bp-h">1. Company</h2>
+        <TextField label="Company name" value={brand.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. Prairie Teachers Association" />
+        <div className="field">
+          <label htmlFor="bp-logo">Logo</label>
+          <div className="row" style={{ gap: 10, alignItems: "center" }}>
+            <div className="bp-logo-box">{brand.logo ? <img src={brand.logo} alt="Uploaded logo" /> : <span className="muted">No logo</span>}</div>
+            <div style={{ display: "grid", gap: 6 }}>
+              <input id="bp-logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" onChange={(e) => onLogo(e.target.files?.[0])} />
+              {brand.logo ? (
+                <div className="row" style={{ gap: 6 }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={async () => {
+                      const c = await coloursFromLogo(brand.logo!);
+                      if (c) {
+                        set(c);
+                        toast("Colours matched to the logo");
+                      } else toast("Couldn't read colours from this logo", "error");
+                    }}
+                  >
+                    Match colours to logo
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => set({ logo: null })}>Remove</button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+          {logoErr ? <div className="error">{logoErr}</div> : <div className="hint">PNG, JPG, WebP or SVG. A transparent background looks best.</div>}
+        </div>
+      </section>
+
+      <section className="panel">
+        <h2 className="bp-h">2. Colours</h2>
+        <div className="bp-presets" role="group" aria-label="Colour presets">
+          {PRESETS.map((p) => (
+            <button type="button" key={p.name} className="chip" onClick={() => set({ c1: p.c1, c2: p.c2, c3: p.c3 })} aria-pressed={brand.c1 === p.c1 && brand.c2 === p.c2 && brand.c3 === p.c3}>
+              <Swatches c1={p.c1} c2={p.c2} c3={p.c3} /> {p.name}
+            </button>
+          ))}
+        </div>
+        <ColourField label="Colour 1 — header & navigation" hint="Top bar, About title bar and bottom menu." value={brand.c1} onChange={(c1) => set({ c1 })} />
+        <ColourField label="Colour 2 — value badge" hint="“SAVE 15%”, “FREE” and the value pill." value={brand.c2} onChange={(c2) => set({ c2 })} />
+        <ColourField label="Colour 3 — buttons & highlights" hint="DETAILS / USE PERK, the offer card, member card band and About background." value={brand.c3} onChange={(c3) => set({ c3 })} />
+      </section>
+
+      <section className="panel">
+        <h2 className="bp-h">3. About page</h2>
+        <TextField label="Title bar text" value={brand.tagline} onChange={(e) => set({ tagline: e.target.value.slice(0, 40) })} hint="Short, like “LIFE TO THE FULLEST”." />
+        <TextField label="Headline" value={brand.headline} onChange={(e) => set({ headline: e.target.value.slice(0, 120) })} />
+        <TextArea label="Description" rows={5} value={brand.description} onChange={(e) => set({ description: e.target.value.slice(0, 1500) })} hint="Leave a blank line between paragraphs." />
+        <TextField label="Privacy Policy link (optional)" value={brand.privacyUrl} onChange={(e) => set({ privacyUrl: e.target.value.slice(0, 300) })} placeholder="https://…" />
+        <TextField label="Terms of Use link (optional)" value={brand.termsUrl} onChange={(e) => set({ termsUrl: e.target.value.slice(0, 300) })} placeholder="https://…" />
+      </section>
+
+      <div className="row" style={{ gap: 8 }}>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => {
+            if (confirm("Clear this preview and start again?")) setBrand(DEFAULT_BRAND);
+          }}
+        >
+          Start a new preview
+        </button>
+      </div>
+      <p className="muted" style={{ fontSize: ".82rem", margin: 0 }}>
+        For demonstrations only. The logo and details stay in this browser — nothing is uploaded or saved to Culturosity, and nothing is published.
+      </p>
+    </div>
+  );
+
+  return (
+    <Wrap>
+      <PageHeader title="Preview" eyebrow="Admin Research & Sales">
+        <button type="button" className="btn btn-ghost" onClick={() => setPresent((v) => !v)}>
+          {present ? "Show controls" : "Presentation view"}
+        </button>
+      </PageHeader>
+      {!present ? (
+        <p className="muted" style={{ marginTop: 0, maxWidth: 760 }}>
+          Show a prospect their own branded perks app. Add their logo and colours and watch the phone and tablet update live. Tap through the screens on
+          either device; both stay in step.
+        </p>
+      ) : null}
+      <div className={`bp-layout ${present ? "bp-present" : ""}`}>
+        {!present ? controls : null}
+        <div className="bp-stage">
+          <div className="bp-stage-bar">
+            <div className="segmented" role="group" aria-label="Screen">
+              {(["perks", "details", "about"] as const).map((s) => (
+                <button key={s} type="button" aria-pressed={screen === s} onClick={() => setScreen(s)}>
+                  {s === "perks" ? "Perks" : s === "details" ? "Details" : "About"}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSeed((n) => n + 1)}>Shuffle perks</button>
+          </div>
+          <DevicePreview brand={brand} seed={seed} screen={screen} setScreen={setScreen} maxZoom={present ? 1.3 : 1} />
+          <p className="muted" style={{ fontSize: ".8rem", textAlign: "center", margin: 0 }}>Sample perks from the Culturosity catalogue, shown for illustration.</p>
+        </div>
+      </div>
     </Wrap>
   );
 }

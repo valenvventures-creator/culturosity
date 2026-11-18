@@ -47,6 +47,7 @@ const ResearchPage = L(internal, "ResearchPage");
 const OutreachPage = L(internal, "OutreachPage");
 const PipelinePage = L(internal, "PipelinePage");
 const DemoGuidePage = L(internal, "DemoGuidePage");
+const PreviewPage = L(internal, "PreviewPage");
 const ServiceQueuePage = L(internal, "ServiceQueuePage");
 const WorkspacesPage = L(internal, "WorkspacesPage");
 const AccessSettingsPage = L(internal, "AccessSettingsPage");
@@ -148,6 +149,7 @@ const router = createBrowserRouter(
       { path: "outreach", element: S(<OutreachPage />) },
       { path: "pipeline", element: S(<PipelinePage />) },
       { path: "demo-guide", element: S(<DemoGuidePage />) },
+      { path: "preview", element: S(<PreviewPage />) },
       { path: "services", element: S(<ServiceQueuePage />) },
       { path: "workspaces", element: S(<WorkspacesPage />) },
       { path: "settings", element: S(<AccessSettingsPage />) },
