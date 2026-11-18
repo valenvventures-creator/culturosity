@@ -1069,7 +1069,7 @@ export function PreviewPage() {
       return DEFAULT_BRAND;
     }
   });
-  const [screen, setScreen] = useState<"perks" | "details" | "about">("perks");
+  const [screen, setScreen] = useState<"perks" | "details" | "about">("about");
   const [seed, setSeed] = useState(1);
   const [logoErr, setLogoErr] = useState<string | null>(null);
   const [present, setPresent] = useState(false);
@@ -1187,7 +1187,7 @@ export function PreviewPage() {
         <div className="bp-stage">
           <div className="bp-stage-bar">
             <div className="segmented" role="group" aria-label="Screen">
-              {(["perks", "details", "about"] as const).map((s) => (
+              {(["about", "perks", "details"] as const).map((s) => (
                 <button key={s} type="button" aria-pressed={screen === s} onClick={() => setScreen(s)}>
                   {s === "perks" ? "Perks" : s === "details" ? "Details" : "About"}
                 </button>
