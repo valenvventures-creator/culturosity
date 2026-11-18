@@ -8,9 +8,14 @@ export interface EmailMessage {
   subject: string;
   text: string;
 }
+/** `sent` is true only when the provider accepted the message; `error` is the provider's reason otherwise. */
+export interface EmailResult {
+  sent: boolean;
+  error?: string;
+}
 export interface EmailAdapter {
   configured: boolean;
-  send(db: Queryable, msg: EmailMessage): Promise<void>;
+  send(db: Queryable, msg: EmailMessage): Promise<EmailResult>;
 }
 
 export function createEmailAdapter(cfg: ServerConfig): EmailAdapter {
@@ -24,16 +29,22 @@ export function createEmailAdapter(cfg: ServerConfig): EmailAdapter {
         msg.text,
         key ? "resend" : "outbox",
       ]);
-      if (!key) return;
+      if (!key) return { sent: false, error: "Email isn't connected (no RESEND_API_KEY)." };
       try {
         const res = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
           body: JSON.stringify({ from: cfg.emailFrom, to: [msg.to], subject: msg.subject, text: msg.text }),
         });
-        if (!res.ok) console.error(`[email] provider returned ${res.status}`);
+        if (res.ok) return { sent: true };
+        // Resend explains rejections (e.g. unverified domain) in a JSON "message"; never includes the key.
+        const detail = await res.json().then((j: any) => String(j?.message ?? "")).catch(() => "");
+        const error = `Resend returned ${res.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`;
+        console.error(`[email] ${error}`);
+        return { sent: false, error };
       } catch (e) {
         console.error("[email] delivery failed", (e as Error).message);
+        return { sent: false, error: "Couldn't reach Resend." };
       }
     },
   };

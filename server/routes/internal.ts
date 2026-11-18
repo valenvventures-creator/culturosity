@@ -769,16 +769,19 @@ internalRoutes.post("/internal/team/invitations", async (c) => {
   await db.query(`update staff_invitations set revoked_at = now() where lower(email) = $1 and accepted_at is null and revoked_at is null`, [email]);
   await db.query(`insert into staff_invitations (email, token_hash, invited_by, expires_at) values ($1,$2,$3,$4)`, [email, sha256(token), user.id, expires]);
   const link = `${config.baseUrl}/auth/sales/${token}`;
-  await mailer
+  const delivery = await mailer
     .send(db, {
       to: email,
       subject: "Join the Culturosity sales team",
       text: `You've been invited to the Culturosity sales workspace (Research & Sales).\n\nCreate your account within ${STAFF_INVITE_DAYS} days:\n${link}\n\nIf you weren't expecting this, you can ignore this message.`,
     })
-    .catch(() => {});
-  await audit(db, { actor: user.id, action: "staff.invited", meta: { email } });
+    .catch(() => ({ sent: false, error: "Email could not be queued." }));
+  await audit(db, { actor: user.id, action: "staff.invited", meta: { email, emailed: delivery.sent } });
   // The link is returned once so the super admin can send it themselves; only its hash is stored.
-  return c.json({ ok: true, link, expiresAt: expires.toISOString(), emailed: mailer.configured }, 201);
+  return c.json(
+    { ok: true, link, expiresAt: expires.toISOString(), emailed: delivery.sent, emailConfigured: mailer.configured, emailError: delivery.sent ? undefined : delivery.error },
+    201,
+  );
 });
 
 internalRoutes.delete("/internal/team/invitations/:id", async (c) => {

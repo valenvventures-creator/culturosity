@@ -1279,7 +1279,7 @@ export function SalesTeamPage() {
   const { data, isLoading, error } = useQuery<any>({ queryKey: ["internal", "team"], queryFn: () => api.get("/internal/team"), enabled: Boolean(me?.grants?.includes("super_admin")) });
   const [email, setEmail] = useState("");
   const [emailErr, setEmailErr] = useState<string | undefined>();
-  const [created, setCreated] = useState<{ email: string; link: string; expiresAt: string; emailed: boolean } | null>(null);
+  const [created, setCreated] = useState<{ email: string; link: string; expiresAt: string; emailed: boolean; emailConfigured?: boolean; emailError?: string } | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ["internal", "team"] });
   if (!me?.grants?.includes("super_admin")) return <Wrap><EmptyState title="Super admin only" /></Wrap>;
 
@@ -1306,7 +1306,7 @@ export function SalesTeamPage() {
             e.preventDefault();
             setEmailErr(undefined);
             try {
-              const r = await api.post<{ link: string; expiresAt: string; emailed: boolean }>("/internal/team/invitations", { email });
+              const r = await api.post<{ link: string; expiresAt: string; emailed: boolean; emailConfigured?: boolean; emailError?: string }>("/internal/team/invitations", { email });
               setCreated({ email, ...r });
               setEmail("");
               refresh();
@@ -1322,8 +1322,13 @@ export function SalesTeamPage() {
             <div className="alert alert-success" role="status" style={{ marginTop: 14, display: "grid", gap: 8 }}>
               <div>
                 Sign-up link for <strong>{created.email}</strong> — valid until {new Date(created.expiresAt).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })}, works once.
-                {created.emailed ? " It was also emailed to them." : " Email isn’t connected yet, so send it to them yourself."}
+                {created.emailed ? " Resend accepted the email, so it’s on its way to them." : created.emailConfigured ? "" : " Email isn’t connected yet, so send it to them yourself."}
               </div>
+              {created.emailConfigured && !created.emailed ? (
+                <div className="alert alert-warning" style={{ margin: 0 }}>
+                  The email couldn’t be sent{created.emailError ? ` — ${created.emailError}` : ""}. Send the link below yourself.
+                </div>
+              ) : null}
               <code style={{ overflowWrap: "anywhere", fontSize: ".85rem" }}>{created.link}</code>
               <div><button type="button" className="btn btn-dark btn-sm" onClick={() => copy(created.link)}>Copy link</button></div>
               <div className="muted" style={{ fontSize: ".82rem" }}>For security the link is shown only now. If it’s lost, create a new one — the old one stops working.</div>
