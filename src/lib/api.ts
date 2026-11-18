@@ -88,7 +88,7 @@ export const prefs = {
   clearAll() {
     try {
       Object.keys(localStorage)
-        .filter((k) => k.startsWith("cul:"))
+        .filter((k) => k.startsWith("cul:") && k !== "cul:theme") // display preference is not private data
         .forEach((k) => localStorage.removeItem(k));
     } catch {
       /* ignore */

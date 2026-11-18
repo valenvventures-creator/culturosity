@@ -35,7 +35,7 @@ export function InternalLayout() {
       <>
         <DemoBanner />
         <SiteHeader />
-        <main id="main">
+        <main id="main" className="theme-area">
           <GatePage onUnlocked={() => { qc.invalidateQueries({ queryKey: ["gate"] }); qc.invalidateQueries({ queryKey: ["me"] }); }} configured={gate.data?.configured} />
         </main>
         <BottomNav />
@@ -107,10 +107,10 @@ export function GatePage({ onUnlocked, configured }: { onUnlocked: () => void; c
   }
   return (
     <div style={{ position: "relative", minHeight: "70vh" }}>
-      <DotField density={14} seed={5} centered />
+      <DotField density={14} seed={5} edgeOnly />
       <div className="container page" style={{ position: "relative" }}>
         <div className="keypad-wrap">
-          <Logo height={56} />
+          <Logo height={56} className="logo-on-page" />
           <h1 style={{ fontSize: "1.6rem", marginTop: 16 }}>Admin Research &amp; Sales</h1>
           <p className="muted">Enter the numerical access code to unlock this session.</p>
           {!configured ? <div className="alert alert-warning">The access code has not been initialised on the server. See README → Numerical gate.</div> : null}

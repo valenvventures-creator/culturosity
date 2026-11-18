@@ -60,4 +60,6 @@ export const IconQr = make(<><rect x="3" y="3" width="7" height="7" /><rect x="1
 export const IconCheck = make(<path d="M20 6 9 17l-5-5" />);
 export const IconBriefcase = make(<><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" /></>);
 export const IconHome = make(<path d="M3 11 12 3l9 8v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z" />);
+export const IconSun = make(<><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>);
+export const IconMoon = make(<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />);
 export const IconDirections = make(<path d="m3 11 19-9-9 19-2-8z" />);

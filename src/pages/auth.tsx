@@ -9,7 +9,7 @@ function AuthCard({ title, children, sub }: { title: string; children: React.Rea
   return (
     <div className="container page" style={{ maxWidth: 520 }}>
       <div style={{ textAlign: "center", marginBottom: 18 }}>
-        <Logo height={64} />
+        <Logo height={64} className="logo-on-page" />
       </div>
       <div className="panel">
         <h1 style={{ fontSize: "1.6rem" }}>{title}</h1>

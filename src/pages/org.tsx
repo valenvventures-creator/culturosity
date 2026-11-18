@@ -780,7 +780,7 @@ export function ManageBranding() {
           <button className="btn btn-dark">Save branding</button>
         </form>
         <div>
-          <div className="org-hero" style={{ color: "#fff" }}>
+          <div className="org-hero">
             <div className="accent-bar" style={{ background: f.accentColor }} />
             {org.logo_url ? <img src={org.logo_url} alt="" style={{ height: 48, background: "#fff", borderRadius: 8, padding: 4, marginBottom: 10 }} /> : null}
             <div className="eyebrow" style={{ color: f.accentColor }}>{org.name}</div>

@@ -2304,3 +2304,176 @@ table.data tr.clickable {
   -webkit-mask-image: radial-gradient(circle at 100% 0%, #000 0 12%, transparent 22%);
   mask-image: radial-gradient(circle at 100% 0%, #000 0 12%, transparent 22%);
 }
+
+/* ==========================================================================
+   Light theme (user toggle). The header, footer, bottom nav, menus and admin
+   sidebar stay brand-black in both themes; page content becomes light.
+   ========================================================================== */
+.org-hero {
+  color: #fff;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="light"] body {
+  background: var(--brand-light);
+}
+:root[data-theme="light"] .theme-area {
+  /* Remap the dark palette to light surfaces for everything inside the content area. */
+  --charcoal-950: #ffffff;
+  --charcoal-900: #ffffff;
+  --charcoal-800: #f0f1f4;
+  --charcoal-700: #e6e7ec;
+  --charcoal-600: #d7d9df;
+  --charcoal-500: #b9bcc6;
+  --line-dark: #dcdce3;
+  --on-dark-muted: #4b4b57;
+  --accent-text: #0a6b51;
+  background: var(--brand-light);
+  color: var(--ink);
+}
+:root[data-theme="light"] .theme-area :is(a:not(.btn), .eyebrow, .perk-card .provider, .perk-row .provider, .main-accent) {
+  color: #0a6b51;
+}
+:root[data-theme="light"] .theme-area h1 span[style*="brand-mint"] {
+  color: #0a6b51 !important; /* "Stronger connections." */
+}
+:root[data-theme="light"] .theme-area .hero-glow {
+  background: radial-gradient(closest-side, rgba(87, 246, 195, 0.35), transparent);
+}
+:root[data-theme="light"] .theme-area .btn {
+  --fg: var(--ink);
+}
+:root[data-theme="light"] .theme-area .btn-primary,
+:root[data-theme="light"] .theme-area .btn-lime {
+  --fg: #000;
+}
+:root[data-theme="light"] .theme-area .btn-dark {
+  --fg: #fff;
+}
+:root[data-theme="light"] .theme-area .btn-danger {
+  --fg: #fff;
+}
+:root[data-theme="light"] .theme-area .btn-ghost {
+  --fg: var(--ink);
+  color: var(--ink);
+  border-color: #c9cbd3;
+  background: #fff;
+}
+:root[data-theme="light"] .theme-area .btn-ghost:hover {
+  background: #eef0f3;
+}
+:root[data-theme="light"] .theme-area :is(.chip, .segmented button, .keypad button, .dark-input, .filters-panel .input, .filters-panel .select, .icon-btn) {
+  color: var(--ink);
+}
+:root[data-theme="light"] .theme-area .chip {
+  border-color: #c9cbd3;
+  background: #fff;
+}
+:root[data-theme="light"] .theme-area .chip[aria-pressed="true"],
+:root[data-theme="light"] .theme-area .segmented button[aria-pressed="true"] {
+  color: #000;
+}
+:root[data-theme="light"] .theme-area .dark-input::placeholder {
+  color: #6b6b76;
+}
+:root[data-theme="light"] .theme-area .dark-input:focus {
+  border-color: #0a6b51;
+}
+:root[data-theme="light"] .theme-area .filters-panel label {
+  color: var(--ink-muted);
+}
+:root[data-theme="light"] .theme-area .badge {
+  background: #ececf1;
+  color: var(--ink);
+}
+:root[data-theme="light"] .theme-area .badge-value {
+  background: var(--value-magenta);
+  color: #fff;
+}
+:root[data-theme="light"] .theme-area .badge-new {
+  background: var(--brand-lime);
+  color: #000;
+}
+:root[data-theme="light"] .theme-area .badge-demo {
+  background: #f3f9d5;
+  color: #3d4a00;
+  border-color: #c8dc5c;
+}
+:root[data-theme="light"] .theme-area .badge-mint {
+  background: #e3f8ee;
+  color: #0a5a44;
+}
+:root[data-theme="light"] .theme-area :is(.perk-card, .perk-row, .feature-card, .value-hero, .filters-panel, .org-hero, .panel-dark) {
+  box-shadow: var(--shadow-light);
+}
+:root[data-theme="light"] .theme-area .perk-card:hover {
+  box-shadow: 0 18px 50px rgba(17, 17, 20, 0.14);
+  border-color: #0a6b51;
+}
+:root[data-theme="light"] .theme-area .perk-card .fav {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+}
+:root[data-theme="light"] .theme-area .perk-card .media .badge-value {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+:root[data-theme="light"] .theme-area .org-hero {
+  color: var(--ink);
+}
+:root[data-theme="light"] .theme-area .keypad-dots span.on {
+  background: #0a6b51;
+  border-color: #0a6b51;
+}
+:root[data-theme="light"] .theme-area .phone {
+  box-shadow: 0 0 0 2px #3b3b46, 0 30px 70px rgba(17, 17, 20, 0.28);
+}
+:root[data-theme="light"] .theme-area .app-promo-mission {
+  color: #111114;
+}
+:root[data-theme="light"] .theme-area .store-badge img {
+  outline-color: transparent;
+}
+:root[data-theme="light"] .theme-area .empty {
+  border-color: #cfd1d8;
+}
+:root[data-theme="light"] .theme-area .skeleton {
+  background: linear-gradient(90deg, #eceef2, #f7f8fa, #eceef2);
+  background-size: 200% 100%;
+}
+/* Sections that were already light stay as designed. */
+:root[data-theme="light"] .theme-area .section-light {
+  background: #ffffff;
+}
+.theme-menu-btn {
+  appearance: none;
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  gap: 8px;
+  width: 100%;
+  justify-content: flex-start;
+  padding: 12px 8px;
+}
+/* Brand-black chrome stays solid black in light mode (no grey from the light page showing through). */
+:root[data-theme="light"] .site-header,
+:root[data-theme="light"] .bottom-nav {
+  background: #000;
+}
+/* The white Culturosity wordmark needs a dark backing on light pages (native colours preserved). */
+:root[data-theme="light"] .theme-area .logo-on-page {
+  background: #000;
+  padding: 10px 18px;
+  border-radius: 16px;
+  box-sizing: content-box;
+  display: inline-block;
+}
+/* Company accent colours were contrast-checked for the dark UI; use the accessible green on white. */
+:root[data-theme="light"] .theme-area .org-hero .eyebrow {
+  color: #0a6b51 !important;
+}
+.dotfield.edge-only {
+  -webkit-mask-image: radial-gradient(circle at 100% 0%, #000 0 8%, transparent 15%);
+  mask-image: radial-gradient(circle at 100% 0%, #000 0 8%, transparent 15%);
+}

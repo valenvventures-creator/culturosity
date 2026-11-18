@@ -3,7 +3,8 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { Logo } from "./ui";
 import { StoreBadges } from "./AppPromo";
 import { useConfig, useMe, useSignOut, isInternal, type Me } from "../lib/session";
-import { IconHeart, IconMenu, IconClose, IconTicket, IconUser, IconBriefcase, IconLock } from "./Icons";
+import { IconHeart, IconMenu, IconClose, IconTicket, IconUser, IconBriefcase, IconLock, IconSun, IconMoon } from "./Icons";
+import { useTheme } from "../lib/theme";
 
 const PUBLIC_NAV = [
   { to: "/perks", label: "Culturosity Perks" },
@@ -91,6 +92,24 @@ function MenuLink({ to, children }: { to: string; children: ReactNode }) {
   );
 }
 
+/** Light/dark switch. The header itself stays brand-black in both themes. */
+export function ThemeToggle({ withLabel = false }: { withLabel?: boolean }) {
+  const { theme, toggle } = useTheme();
+  const light = theme === "light";
+  const label = light ? "Switch to dark mode" : "Switch to light mode";
+  if (withLabel)
+    return (
+      <button type="button" className="nav-btn theme-menu-btn" onClick={toggle} aria-pressed={light}>
+        {light ? <IconMoon size={18} /> : <IconSun size={18} />} {light ? "Dark mode" : "Light mode"}
+      </button>
+    );
+  return (
+    <button type="button" className="icon-btn" onClick={toggle} aria-label={label} title={label} aria-pressed={light}>
+      {light ? <IconMoon /> : <IconSun />}
+    </button>
+  );
+}
+
 export function SiteHeader() {
   const { data: me } = useMe();
   const [open, setOpen] = useState(false);
@@ -113,6 +132,7 @@ export function SiteHeader() {
         </nav>
         <div className="header-actions">
           {me?.user ? <span className="hide-sm"><WorkspaceSwitcher me={me} /></span> : null}
+          <span className="hide-sm"><ThemeToggle /></span>
           {me ? <AccountMenu me={me} /> : null}
           <button className="icon-btn menu-toggle" aria-expanded={open} aria-controls="mobile-menu" onClick={() => setOpen((v) => !v)} aria-label="Menu">
             {open ? <IconClose /> : <IconMenu />}
@@ -128,6 +148,7 @@ export function SiteHeader() {
             </Link>
           ))}
           <Link to="/demo">Product demo</Link>
+          <ThemeToggle withLabel />
           {me && isInternal(me) ? <Link to="/culturosity/admin">Admin Research &amp; Sales</Link> : null}
           {!me?.user ? <Link to="/auth/signin">Sign In</Link> : null}
         </nav>
@@ -220,7 +241,7 @@ export function PublicLayout() {
       <a href="#main" className="skip-link">Skip to content</a>
       <DemoBanner />
       <SiteHeader />
-      <main id="main" key={loc.pathname} className="route-fade" tabIndex={-1}>
+      <main id="main" key={loc.pathname} className="route-fade theme-area" tabIndex={-1}>
         <Outlet />
       </main>
       <SiteFooter />
