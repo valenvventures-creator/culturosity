@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import QRCode from "qrcode";
 import { api } from "../lib/api";
 import { useToast } from "./ui";
+import { IconLock } from "./Icons";
 
 interface Token {
   qrPayload: string;
@@ -10,35 +12,59 @@ interface Token {
   expiresAt: string;
 }
 
+function useQrSvg(payload: string | null | undefined) {
+  const [svg, setSvg] = useState("");
+  useEffect(() => {
+    if (!payload) {
+      setSvg("");
+      return;
+    }
+    let live = true;
+    // Static black-on-white with a quiet zone: the most reliable for point-of-sale scanners.
+    QRCode.toString(payload, { type: "svg", margin: 2, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } }).then((s) => {
+      if (live) setSvg(s);
+    });
+    return () => {
+      live = false;
+    };
+  }, [payload]);
+  return svg;
+}
+
 /**
- * Culturosity membership card. The QR is static black-on-white (no gradients or animation)
- * and encodes only an opaque, short-lived server-issued reference — never names or emails.
+ * Culturosity member card, as in the app: black card, Culturosity logo, the perk's own QR code
+ * (each perk has a unique code that providers link to their point-of-sale system) and a vertical
+ * MEMBER band. A one-time verification code is available for providers who verify in Culturosity.
  */
 export function MemberCard({
   programId,
   perkId,
   providerRef,
+  perkQr,
   memberName,
   programName,
   limitReached,
+  perkLabel,
 }: {
   programId: string;
   perkId: string;
   providerRef: string;
+  perkQr: string | null;
   memberName: string;
   programName: string;
   limitReached: boolean;
+  perkLabel: string;
 }) {
   const [token, setToken] = useState<Token | null>(null);
-  const [svg, setSvg] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const toast = useToast();
+  const perkSvg = useQrSvg(perkQr);
+  const tokenSvg = useQrSvg(token?.qrPayload);
 
   useEffect(() => {
     if (!token) return;
-    QRCode.toString(token.qrPayload, { type: "svg", margin: 1, errorCorrectionLevel: "M", color: { dark: "#000000", light: "#ffffff" } }).then(setSvg);
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, [token]);
@@ -50,8 +76,7 @@ export function MemberCard({
     setBusy(true);
     setErr(null);
     try {
-      const t = await api.post<Token>("/redemption-tokens", { programId, perkId });
-      setToken(t);
+      setToken(await api.post<Token>("/redemption-tokens", { programId, perkId }));
     } catch (e: any) {
       setErr(e.message);
       toast(e.message, "error");
@@ -60,52 +85,80 @@ export function MemberCard({
     }
   }
 
-  return (
-    <section className="member-card" aria-labelledby="member-card-title" id="member-card">
-      <div className="vertical" aria-hidden>
-        <span>MEMBER</span>
-      </div>
-      <div className="spread" style={{ alignItems: "flex-start" }}>
-        <img className="card-logo" src="/brand/culturosity-logo.webp" alt="Culturosity" />
-        <div style={{ textAlign: "right", fontSize: ".78rem", color: "#b4b4bf" }}>
-          <div id="member-card-title" style={{ color: "#fff", fontWeight: 600 }}>
-            Member card
-          </div>
-          <div>{programName}</div>
+  const verification = limitReached ? (
+    <p className="mc-note mc-warn">You have used this offer the maximum number of times.</p>
+  ) : token && !expired ? (
+    <div className="mc-token">
+      <div className="mc-qr mc-qr-sm" role="img" aria-label="One-time verification QR code. The manual code is shown beside it." dangerouslySetInnerHTML={{ __html: tokenSvg }} />
+      <div style={{ display: "grid", gap: 4 }}>
+        <div className="mc-note">One-time code</div>
+        <div className="mc-code" aria-label={`Manual code ${token.manualCode.split("").join(" ")}`}>{token.manualCode}</div>
+        <div className="mc-note" aria-live="polite">
+          Valid for {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")} · provider {token.providerRef}
         </div>
       </div>
-      <div style={{ margin: "14px 0 6px", fontSize: "1.05rem", fontWeight: 600 }}>{memberName}</div>
-      <div style={{ fontSize: ".8rem", color: "#b4b4bf" }}>
-        Provider reference <strong style={{ color: "#fff", letterSpacing: ".06em" }}>{providerRef}</strong>
-      </div>
-      <div style={{ marginTop: 16 }}>
-        {limitReached ? (
-          <p style={{ color: "#D2F538" }}>You have used this offer the maximum number of times.</p>
-        ) : token && !expired ? (
-          <div className="row" style={{ alignItems: "flex-start", gap: 16 }}>
-            <div className="qr" role="img" aria-label="Redemption QR code. The manual code is shown beside it." dangerouslySetInnerHTML={{ __html: svg }} />
-            <div style={{ display: "grid", gap: 6 }}>
-              <div style={{ fontSize: ".78rem", color: "#b4b4bf" }}>Manual code</div>
-              <div className="code" aria-label={`Manual code ${token.manualCode.split("").join(" ")}`}>
-                {token.manualCode}
-              </div>
-              <div style={{ fontSize: ".8rem", color: "#b4b4bf" }} aria-live="polite">
-                Valid for {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}
-              </div>
-              <div style={{ fontSize: ".78rem", color: "#b4b4bf", maxWidth: 200 }}>Show this to the provider. They verify it on their device.</div>
-            </div>
+    </div>
+  ) : (
+    <div style={{ display: "grid", gap: 8 }}>
+      {expired ? <p className="mc-note mc-warn">This code expired. Generate a new one when you are with the provider.</p> : null}
+      <button className="btn btn-ghost btn-sm mc-btn" onClick={issue} disabled={busy}>
+        {busy ? "Generating…" : expired ? "Generate a new code" : "Get a one-time verification code"}
+      </button>
+      <p className="mc-note">For providers who verify members in Culturosity. Codes last 10 minutes and work once.</p>
+      {err ? <p role="alert" className="mc-note mc-err">{err}</p> : null}
+    </div>
+  );
+
+  return (
+    <section className="mcard-wrap" aria-labelledby="member-card-title" id="member-card">
+      <div className="mcard">
+        <div className="mcard-main">
+          <img className="mcard-logo" src="/brand/culturosity-logo.webp" alt="Culturosity" />
+          <div className="mcard-who">
+            <div id="member-card-title" className="mcard-name">{memberName}</div>
+            <div className="mcard-sub">{programName}</div>
           </div>
-        ) : (
-          <div style={{ display: "grid", gap: 10 }}>
-            {expired ? <p style={{ color: "#D2F538", margin: 0 }}>This code expired. Generate a new one when you are with the provider.</p> : null}
-            <button className="btn btn-primary" onClick={issue} disabled={busy}>
-              {busy ? "Generating…" : expired ? "Generate a new code" : "Show my redemption code"}
-            </button>
-            <p style={{ fontSize: ".8rem", color: "#b4b4bf", margin: 0 }}>Codes last 10 minutes and work once. Generate it when you are ready to redeem.</p>
-          </div>
-        )}
-        {err && !token ? <p role="alert" style={{ color: "#ff9aa2", fontSize: ".85rem", marginTop: 8 }}>{err}</p> : null}
+        </div>
+        {perkQr ? (
+          <div className="mc-qr" role="img" aria-label={`QR code for ${perkLabel}. Show it at checkout.`} dangerouslySetInnerHTML={{ __html: perkSvg }} />
+        ) : null}
+        <div className="mcard-band" aria-hidden>
+          <span>MEMBER</span>
+        </div>
       </div>
+      <p className="mc-hint">
+        {perkQr ? "Show this card at checkout — the provider scans this perk’s QR code at their point of sale." : "Show this card to the provider when you redeem."}
+      </p>
+      <details className="mc-verify" open={Boolean(token)}>
+        <summary>Provider asks for a verification code?</summary>
+        {verification}
+      </details>
+    </section>
+  );
+}
+
+/** Signed-out placeholder in the same shape as the member card. */
+export function LockedMemberCard({ signInHref }: { signInHref: string }) {
+  return (
+    <section className="mcard-wrap" aria-label="Member card (sign in to view)">
+      <div className="mcard mcard-locked">
+        <div className="mcard-main">
+          <img className="mcard-logo" src="/brand/culturosity-logo.webp" alt="Culturosity" />
+          <div className="mcard-who">
+            <div className="mcard-name">Your member card</div>
+            <div className="mcard-sub">Culturosity Perks</div>
+          </div>
+        </div>
+        <div className="mc-qr mc-qr-locked" aria-hidden>
+          <IconLock size={28} />
+        </div>
+        <div className="mcard-band" aria-hidden>
+          <span>MEMBER</span>
+        </div>
+      </div>
+      <p className="mc-hint">
+        <Link to={signInHref}>Sign in free</Link> to show this perk’s QR code at checkout.
+      </p>
     </section>
   );
 }

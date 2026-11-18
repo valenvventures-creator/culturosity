@@ -403,35 +403,57 @@ describe("accounts", () => {
   });
 });
 
-describe("content pack: Culturosity perk listings", () => {
-  it("adds the 38 listings once, shows them publicly with images, and blocks redemption until details arrive", async () => {
+describe("content packs: Culturosity perk listings and details", () => {
+  it("adds the listings and full details once, shows public details safely, and keeps promo codes and QR codes member-only", async () => {
     const { applyContentPacks } = await import("../server/seed/content");
     const log = await applyContentPacks(ctx.db);
     expect(log[0]).toContain("35 Culturosity perks added");
     expect(log[1]).toContain("3 Culturosity perks added");
+    expect(log[2]).toContain("3 perks added, 37 perks given full details, 20 provider profiles updated");
     expect(await applyContentPacks(ctx.db)).toEqual([]); // idempotent
-    const pub = (await client(app).get("/public/perks?sort=new")).json.perks.filter((p: any) => !p.is_demo);
-    expect(pub).toHaveLength(38);
-    expect(pub.map((p: any) => p.title)).toEqual(expect.arrayContaining(["Tosca", "Happy Hour - Two Taps and a Snack", "BPM X WAG-Qaumajuq"]));
-    expect(pub.filter((p: any) => p.provider_name === "Manitoba Opera")).toHaveLength(3); // joins the existing provider
-    const ram = pub.findIndex((p: any) => p.title === "Ram Motorsports Spectacular - Feb 7, 2027");
-    expect(pub[ram + 1].title).toBe("Ram Motorsports Spectacular - Feb 6, 2027"); // pack order preserved
-    expect(pub.every((p: any) => p.image_url?.startsWith("/perks/culturosity/") && p.details_pending)).toBe(true);
-    const labels = new Set(pub.map((p: any) => p.value_label));
-    for (const l of ["Save 25%", "Free", "BOGO", "Special offer", "Exclusive", "Save $2", "Save $25", "Save $10"]) expect(labels.has(l)).toBe(true);
-    const blufish = pub.filter((p: any) => p.provider_name === "Blufish Japanese Restaurant");
-    expect(blufish).toHaveLength(5);
+
+    const rows = await ctx.db.query<{ title: string; details_pending: boolean; pos_reference: string | null; image_path: string }>(
+      `select pk.title, pk.details_pending, pk.pos_reference, pk.image_path from perks pk join organizations o on o.id = pk.org_id
+        where o.slug = 'culturosity' and not pk.is_demo`,
+    );
+    expect(rows.rows).toHaveLength(41);
+    expect(rows.rows.filter((r) => r.details_pending).map((r) => r.title).sort()).toEqual(["BPM X WAG-Qaumajuq", "Gift Shop", "Happy Hour - Two Taps and a Snack", "Tosca"]);
+    expect(rows.rows.filter((r) => !r.details_pending).every((r) => r.pos_reference && r.image_path.startsWith("/perks/culturosity/"))).toBe(true);
+    const titles = rows.rows.map((r) => r.title);
+    expect(titles).toEqual(expect.arrayContaining(["Beethoven’s Violin Concerto & Sibelius’ Symphony No. 1", "Buy one subscription, bring a friend for free to Symphonic Sessions", "Membership", "La Belle Boutique Blanche", "Vocal Assessment"]));
     const providers = await ctx.db.query<{ n: number }>(`select count(*)::int as n from providers where name = 'Blufish Japanese Restaurant'`);
     expect(providers.rows[0].n).toBe(1); // one provider record, several offers
 
-    // A Culturosity member (super admin is in the real program) sees details but cannot redeem yet.
+    const pub = (await client(app).get("/public/perks?sort=new")).json.perks.filter((p: any) => !p.is_demo);
+    expect(pub.slice(0, 3).map((p: any) => p.title)).toEqual(["Membership", "La Belle Boutique Blanche", "Vocal Assessment"]); // newest first
+    const labels = new Set(pub.map((p: any) => p.value_label));
+    for (const l of ["Save 25%", "Free", "BOGO", "Exclusive", "Save $2", "Save $5", "Save $25", "Save $10"]) expect(labels.has(l)).toBe(true);
+    const find = (t: string) => pub.find((p: any) => p.title === t);
+
+    // Signed out: description, dates and provider contacts are public; codes, links and QR are not.
+    const boutique = (await client(app).get(`/perks/${find("La Belle Boutique Blanche").id}`)).json;
+    expect(boutique.access).toBe("teaser");
+    expect(boutique.perk.full_description).toContain("rustic boutique");
+    expect(boutique.perk.full_description).not.toContain("CULTURE10");
+    expect(boutique.perk.has_promo).toBe(true);
+    expect(boutique.perk.provider_email).toBe("info@msbm.mb.ca");
+    expect(boutique.perk.address_line).toBe("494 Taché Ave");
+    for (const k of ["promo_code", "pos_reference", "redemption_url"]) expect(boutique.perk[k]).toBeUndefined();
+
+    // A Culturosity member sees everything and can use the perk.
     const sa = client(app, "10.7.0.1");
     await sa.signIn("super@demo.culturosity.test");
-    const d = await sa.get(`/perks/${pub[ram].id}`);
+    const madeHere = find("Made Here");
+    const d = await sa.get(`/perks/${madeHere.id}`);
     expect(d.json.access).toBe("member");
-    expect(d.json.perk.details_pending).toBe(true);
+    expect(d.json.perk).toMatchObject({ details_pending: false, promo_code: "MHCULTUROSITY10", pos_reference: "https://madeheremb.com/collections/all", redemption_method: "hybrid", provider_website: "https://madeheremb.com" });
     const progId = d.json.perk.program.id;
-    expect((await sa.post("/redemption-tokens", { programId: progId, perkId: pub[ram].id })).status).toBe(409);
-    expect((await sa.post("/events", { event: "use_perk_click", programId: progId, perkId: pub[ram].id })).status).toBe(409);
+    expect((await sa.post("/redemption-tokens", { programId: progId, perkId: madeHere.id })).status).toBe(200);
+    const click = await sa.post("/events", { event: "use_perk_click", programId: progId, perkId: madeHere.id });
+    expect(click.json.redirect).toBe("https://madeheremb.com/collections/all");
+
+    // Perks without details yet still cannot be redeemed.
+    const tosca = find("Tosca");
+    expect((await sa.post("/redemption-tokens", { programId: progId, perkId: tosca.id })).status).toBe(409);
   });
 });

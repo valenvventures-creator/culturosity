@@ -1,28 +1,125 @@
+import { Fragment, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, qs } from "../lib/api";
 import { useMe } from "../lib/session";
-import { formatWindow, formatDateTime } from "@shared/time";
+import { formatDateTime } from "@shared/time";
 import { directionsUrl, isSafeHttpUrl } from "@shared/perk";
-import { MemberCard } from "./MemberCard";
+import { LockedMemberCard, MemberCard } from "./MemberCard";
 import { DemoBadge, ErrorAlert, PerkImage, Spinner, useDocumentTitle, useToast } from "./ui";
-import {
-  IconBack,
-  IconCalendar,
-  IconClock,
-  IconCopy,
-  IconDirections,
-  IconExternal,
-  IconGlobe,
-  IconHeart,
-  IconHeartFill,
-  IconMail,
-  IconPhone,
-  IconPin,
-  IconShare,
-  IconTicket,
-  IconUsers,
-} from "./Icons";
+import { IconBack, IconCalendar, IconCopy, IconDirections, IconExternal, IconGlobe, IconHeart, IconHeartFill, IconLock, IconMail, IconPhone, IconShare, IconTicket } from "./Icons";
+
+/** "***PROMO CODE***" on its own line marks where the promo-code block sits (the app's convention). */
+const PROMO_MARKER = /^\s*\*{2,}\s*promo\s*code\s*\*{2,}\s*$/i;
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+/** True when `part` already appears in `whole` (ignoring case, punctuation and line breaks). */
+const mentions = (whole: string, part: string) => norm(whole).includes(norm(part));
+
+function linkify(text: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  const re = /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/gi;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(
+      <a key={m.index} href={`mailto:${m[1]}`}>
+        {m[1]}
+      </a>,
+    );
+    last = m.index + m[1].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+/** Paragraphs on blank lines, "- " lines as lists, line breaks kept, promo marker → promo block. */
+function RichText({ text, promo }: { text: string; promo: ReactNode }) {
+  const blocks = text.replace(/\r\n/g, "\n").split(/\n\s*\n/);
+  let promoShown = false;
+  const nodes = blocks.map((b, i) => {
+    const lines = b.split("\n").filter((l) => l.trim() !== "");
+    if (!lines.length) return null;
+    if (lines.length === 1 && PROMO_MARKER.test(lines[0])) {
+      promoShown = true;
+      return <Fragment key={i}>{promo}</Fragment>;
+    }
+    const parts: ReactNode[] = [];
+    let list: string[] = [];
+    let para: string[] = [];
+    const flushPara = () => {
+      if (para.length)
+        parts.push(
+          <p key={`p${parts.length}`}>
+            {para.map((l, j) => (
+              <Fragment key={j}>
+                {j ? <br /> : null}
+                {linkify(l)}
+              </Fragment>
+            ))}
+          </p>,
+        );
+      para = [];
+    };
+    const flushList = () => {
+      if (list.length)
+        parts.push(
+          <ul key={`u${parts.length}`}>
+            {list.map((l, j) => (
+              <li key={j}>{linkify(l)}</li>
+            ))}
+          </ul>,
+        );
+      list = [];
+    };
+    for (const l of lines) {
+      if (PROMO_MARKER.test(l)) {
+        flushPara();
+        flushList();
+        promoShown = true;
+        parts.push(<Fragment key={`m${parts.length}`}>{promo}</Fragment>);
+      } else if (/^\s*[-•]\s+/.test(l)) {
+        flushPara();
+        list.push(l.replace(/^\s*[-•]\s+/, ""));
+      } else {
+        flushList();
+        para.push(l);
+      }
+    }
+    flushPara();
+    flushList();
+    return <Fragment key={i}>{parts}</Fragment>;
+  });
+  return (
+    <>
+      {nodes}
+      {!promoShown ? promo : null}
+    </>
+  );
+}
+
+function displayUrl(u: string) {
+  try {
+    const x = new URL(u);
+    return x.host + (x.pathname !== "/" ? x.pathname.replace(/\/$/, "") : "");
+  } catch {
+    return u;
+  }
+}
+
+function ContactRow({ icon, label, children }: { icon: ReactNode; label: string; children: ReactNode }) {
+  return (
+    <li className="pd-contact">
+      <span className="pd-contact-icon" aria-hidden>
+        {icon}
+      </span>
+      <div>
+        <div className="pd-contact-label">{label}</div>
+        <div className="pd-contact-value">{children}</div>
+      </div>
+    </li>
+  );
+}
 
 export function PerkDetailPage({ perkId, programId, backTo, backLabel }: { perkId: string; programId?: string; backTo: string; backLabel: string }) {
   const { data: me } = useMe();
@@ -54,7 +151,7 @@ export function PerkDetailPage({ perkId, programId, backTo, backLabel }: { perkI
       if (navigator.share) await navigator.share({ title: `${perk.provider_name} — ${perk.title}`, url });
       else {
         await navigator.clipboard.writeText(url);
-        toast("Link copied. Recipients need their own eligible membership to view it.");
+        toast("Link copied.");
       }
       if (data?.access === "member") api.post("/events", { event: "share", programId: perk.program.id, perkId }).catch(() => {});
     } catch {
@@ -97,288 +194,233 @@ export function PerkDetailPage({ perkId, programId, backTo, backLabel }: { perkI
       </div>
     );
 
-  const window_ = formatWindow(perk.starts_at, perk.ends_at, perk.is_ongoing, perk.timezone);
   const isTeaser = data.access === "teaser";
-
-  if (isTeaser)
-    return (
-      <div className="container page">
-        <div className="detail-top">
-          <button className="btn btn-ghost btn-sm" onClick={() => nav(backTo)}>
-            <IconBack size={18} /> {backLabel}
-          </button>
-          <button className="icon-btn" onClick={share} aria-label="Share link">
-            <IconShare />
-          </button>
-        </div>
-        <div className="detail-layout">
-          <div className="stack">
-            <div className="value-hero">
-              <div className="row">
-                <span className="value">{perk.value_label}</span>
-                {perk.is_demo ? <DemoBadge /> : null}
-              </div>
-              <div>
-                <div className="eyebrow">{perk.provider_name}</div>
-                <h1 style={{ fontSize: "clamp(1.6rem,3.2vw,2.4rem)" }}>{perk.title}</h1>
-                <p className="muted">{perk.short_description}</p>
-                <p className="row muted" style={{ gap: 6 }}>
-                  <IconCalendar size={16} /> {window_}
-                </p>
-              </div>
-            </div>
-            <div className="detail-image">
-              <PerkImage src={perk.image_url} alt={perk.image_alt || perk.title} eager />
-            </div>
-          </div>
-          <aside className="detail-aside panel">
-            <h2 style={{ fontSize: "1.3rem" }}>Members see the full offer</h2>
-            <p className="muted">Eligible Culturosity members can view the full description, redemption details and member card after signing in.</p>
-            <div className="row">
-              <Link className="btn btn-primary" to={`/auth/signin?next=${encodeURIComponent(location.pathname)}`}>
-                Sign in to view
-              </Link>
-              <Link className="btn btn-ghost" to="/affinity">
-                Bring perks to your organization
-              </Link>
-            </div>
-          </aside>
-        </div>
-      </div>
-    );
-
-  const locations = [
-    ...(perk.address_line || perk.city ? [{ label: "", address_line: perk.address_line, city: perk.city, region: perk.region, postal_code: perk.postal_code, country: perk.country, lat: perk.lat, lng: perk.lng }] : []),
-    ...perk.provider_locations,
-  ];
-  const online = perk.redemption_method !== "in_person" && perk.redemption_url;
-  const inPerson = perk.redemption_method !== "online";
-  const limitReached = perk.usage_limit_per_member != null && perk.redemptions_used >= perk.usage_limit_per_member;
   const pending = Boolean(perk.details_pending);
+  const signInHref = `/auth/signin?next=${encodeURIComponent(location.pathname)}`;
+  const online = perk.redemption_method !== "in_person";
+  const inPerson = perk.redemption_method !== "online";
+  const limitReached = !isTeaser && perk.usage_limit_per_member != null && perk.redemptions_used >= perk.usage_limit_per_member;
+  const tz = perk.timezone;
+  const locations = [
+    ...(perk.address_line ? [{ label: "", address_line: perk.address_line, city: perk.city, region: perk.region, postal_code: perk.postal_code, country: perk.country, lat: perk.lat, lng: perk.lng }] : []),
+    ...(perk.provider_locations ?? []),
+  ];
+  const occurrences: any[] = perk.occurrences ?? [];
+  const nowMs = Date.now();
+  const endsSoon = !perk.is_ongoing && perk.ends_at ? formatDateTime(perk.ends_at, tz) : null;
+  const time = (v: string) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, hour: "numeric", minute: "2-digit" }).format(new Date(v));
+
+  const promoBlock =
+    perk.promo_code || perk.has_promo ? (
+      <div className="pd-promo">
+        <div className="pd-promo-label">Promo code</div>
+        {isTeaser ? (
+          <Link className="pd-promo-code pd-promo-locked" to={signInHref}>
+            <IconLock size={16} /> Sign in to reveal
+          </Link>
+        ) : (
+          <button
+            type="button"
+            className="pd-promo-code"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(perk.promo_code);
+                toast("Promo code copied");
+              } catch {
+                toast("Select the code to copy it", "error");
+              }
+            }}
+            aria-label={`Promo code ${perk.promo_code}. Copy to clipboard`}
+          >
+            <code>{perk.promo_code}</code>
+            <span className="pd-promo-copy">
+              <IconCopy size={16} /> Copy
+            </span>
+          </button>
+        )}
+      </div>
+    ) : null;
+
+  // Value pill fused with the main action, like the app.
+  const action = pending ? null : isTeaser ? (
+    <Link className="pd-action" to={signInHref}>
+      {online ? "Use Perk" : "Show card"} <IconLock size={16} />
+    </Link>
+  ) : online && perk.redemption_url ? (
+    <button type="button" className="pd-action" onClick={usePerk}>
+      Use Perk <IconExternal size={16} />
+    </button>
+  ) : (
+    <a className="pd-action" href="#member-card">
+      Show card <IconTicket size={16} />
+    </a>
+  );
+
+  const hasContacts = perk.provider_website || perk.provider_email || perk.provider_phone || locations.length;
 
   return (
-    <div className="container page">
-      <div className="detail-top">
-        <button className="btn btn-ghost btn-sm" onClick={() => nav(backTo)}>
-          <IconBack size={18} /> {backLabel}
+    <div className="container page pd">
+      <div className="pd-top">
+        <button className="icon-btn" onClick={() => nav(backTo)} aria-label={`Back to ${backLabel}`}>
+          <IconBack />
         </button>
-        <div className="row">
-          <button className="icon-btn" onClick={share} aria-label="Share link to this perk">
-            <IconShare />
-          </button>
-          <button className="icon-btn" aria-pressed={perk.is_favourite} onClick={() => fav.mutate()} aria-label={perk.is_favourite ? "Remove from saved" : "Save perk"}>
-            {perk.is_favourite ? <IconHeartFill /> : <IconHeart />}
-          </button>
-        </div>
+        <div className="pd-top-title">Details</div>
+        <button className="icon-btn" onClick={share} aria-label="Share link to this perk">
+          <IconShare />
+        </button>
       </div>
 
-      <div className="detail-layout">
-        <div className="stack">
-          {/* 1. Value and action first */}
-          <div className="value-hero">
-            <div className="row">
-              <span className="value">{perk.value_label}</span>
-              {perk.is_demo ? <DemoBadge /> : null}
-              <span className="badge badge-mint">
-                {perk.program.org_kind === "culturosity" ? "Culturosity Perks" : perk.program.org_name}
-                {perk.source_org_kind === "culturosity" && perk.program.org_kind !== "culturosity" ? " · from Culturosity" : ""}
-              </span>
+      <div className="pd-layout">
+        <div className="pd-main">
+          <div className="pd-actionbar">
+            <div className="pd-pill">
+              <span className="pd-value">{perk.value_label}</span>
+              {action}
             </div>
-            {perk.conditions ? <p className="muted" style={{ margin: 0 }}>{perk.conditions}</p> : null}
-            {pending ? (
-              <div className="alert alert-info" role="status">Full details and how to redeem this perk are coming soon. Save it to find it again easily.</div>
-            ) : null}
-            <div className="row" hidden={pending}>
-              {online ? (
-                <button className="btn btn-primary btn-lg" onClick={usePerk}>
-                  Use Perk <IconExternal size={18} />
-                </button>
-              ) : null}
-              {inPerson ? (
-                <a className={`btn ${online ? "btn-ghost" : "btn-primary"} btn-lg`} href="#member-card">
-                  <IconTicket size={18} /> Show Member Card
-                </a>
-              ) : null}
-            </div>
-            {perk.redemption_method === "hybrid" ? <p className="muted" style={{ margin: 0, fontSize: ".88rem" }}>Redeem online with Use Perk, or in person with your member card.</p> : null}
+            {perk.is_demo ? <DemoBadge /> : null}
+            {isTeaser ? (
+              <Link className="icon-btn pd-fav" to={signInHref} aria-label="Sign in to save this perk">
+                <IconHeart />
+              </Link>
+            ) : (
+              <button className="icon-btn pd-fav" aria-pressed={perk.is_favourite} onClick={() => fav.mutate()} aria-label={perk.is_favourite ? "Remove from saved" : "Save perk"}>
+                {perk.is_favourite ? <IconHeartFill /> : <IconHeart />}
+              </button>
+            )}
           </div>
 
-          {/* 2. Image */}
-          <div className="detail-image">
-            <PerkImage src={perk.image_url} alt={perk.image_alt || perk.title} eager />
+          <div className="pd-image">
+            <PerkImage src={perk.image_url} alt={perk.image_alt || `${perk.provider_name} — ${perk.title}`} eager />
           </div>
 
-          {/* 3. Offer details */}
-          <article className="panel">
-            <div className="eyebrow">{perk.provider_name}</div>
-            <h1 style={{ fontSize: "clamp(1.5rem,3vw,2.2rem)" }}>{perk.title}</h1>
-            {perk.full_description ? <p style={{ whiteSpace: "pre-line" }}>{perk.full_description}</p> : pending ? <p className="muted">The full description is coming soon.</p> : null}
-            {perk.promo_code ? (
-              <div style={{ margin: "16px 0" }}>
-                <div className="label" style={{ fontWeight: 600, marginBottom: 6 }}>Promo code</div>
-                <div className="promo">
-                  <code>{perk.promo_code}</code>
-                  <button
-                    className="btn btn-dark btn-sm"
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(perk.promo_code);
-                      toast("Promo code copied");
-                    }}
-                  >
-                    <IconCopy size={16} /> Copy
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            <hr className="divider" />
-            <div className="info-list">
-              <div className="info-item">
-                <IconCalendar />
-                <div>
-                  <strong>Available</strong>
-                  <div>{pending && perk.is_ongoing && !perk.ends_at ? "Details coming soon" : <>{window_} <span className="muted">({perk.timezone.replace("_", " ")})</span></>}</div>
-                </div>
-              </div>
-              {perk.occurrences.length ? (
-                <div className="info-item">
-                  <IconClock />
-                  <div>
-                    <strong>Event dates</strong>
-                    <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
-                      {perk.occurrences.map((o: any) => (
-                        <li key={o.id}>
-                          {formatDateTime(o.starts_at, perk.timezone)}
-                          {o.ends_at ? ` – ${new Intl.DateTimeFormat("en-CA", { timeZone: perk.timezone, hour: "numeric", minute: "2-digit" }).format(new Date(o.ends_at))}` : ""}
-                          {o.venue ? ` · ${o.venue}` : ""}
-                          {o.notes ? ` · ${o.notes}` : ""}
+          <div className="pd-provider">{perk.provider_name}</div>
+
+          <article className="pd-card" aria-labelledby="perk-title">
+            <h1 id="perk-title">{perk.title}</h1>
+            {endsSoon || occurrences.length ? (
+              <div className="pd-when">
+                {occurrences.length ? (
+                  <ul>
+                    {occurrences.map((o) => {
+                      const past = new Date(o.ends_at ?? o.starts_at).getTime() < nowMs;
+                      return (
+                        <li key={o.id} className={past ? "past" : ""}>
+                          <IconCalendar size={16} />
+                          <span>
+                            {formatDateTime(o.starts_at, tz)}
+                            {o.ends_at ? ` – ${time(o.ends_at)}` : ""}
+                            {o.notes ? <span className="pd-when-note"> · {o.notes}</span> : null}
+                            {past ? <span className="pd-when-note"> (past)</span> : null}
+                          </span>
                         </li>
-                      ))}
-                    </ul>
-                    <div className="muted" style={{ fontSize: ".82rem" }}>Event dates are separate from the period when this offer can be claimed.</div>
-                  </div>
-                </div>
-              ) : null}
-              {perk.booking_deadline ? (
-                <div className="info-item">
-                  <IconClock />
-                  <div>
-                    <strong>Book by</strong>
-                    <div>{formatDateTime(perk.booking_deadline, perk.timezone)}</div>
-                  </div>
-                </div>
-              ) : null}
-              <div className="info-item">
-                <IconTicket />
-                <div>
-                  <strong>How to redeem</strong>
-                  <div style={{ whiteSpace: "pre-line" }}>{perk.redemption_instructions}</div>
-                  {perk.usage_limit_per_member ? (
-                    <div className="muted" style={{ fontSize: ".85rem" }}>
-                      Limit {perk.usage_limit_per_member} per member · you have used {perk.redemptions_used}
-                    </div>
-                  ) : null}
-                </div>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+                {endsSoon ? <div className="pd-ends">Offer ends {endsSoon}</div> : null}
               </div>
-              <div className="info-item">
-                <IconUsers />
-                <div>
-                  <strong>Who is eligible</strong>
-                  <div>{perk.eligibility_text}</div>
-                  {perk.household_allowed ? <div className="muted">Household members may also use this offer.</div> : null}
-                </div>
+            ) : null}
+            {pending ? (
+              <p>Full details and how to redeem this perk are coming soon. {isTeaser ? null : "Save it to find it again easily."}</p>
+            ) : perk.full_description ? (
+              <RichText text={perk.full_description} promo={promoBlock} />
+            ) : (
+              <>
+                {perk.short_description ? <p>{perk.short_description}</p> : null}
+                {promoBlock}
+              </>
+            )}
+            {!pending && perk.redemption_instructions && !mentions(perk.full_description ?? "", perk.redemption_instructions) ? (
+              <div className="pd-redeem">
+                <strong>How to redeem</strong>
+                <p>{perk.redemption_instructions}</p>
               </div>
-              {perk.exclusions || perk.terms || (perk.blackout_dates ?? []).length ? (
-                <div className="info-item">
-                  <IconClock />
-                  <div>
-                    <strong>Restrictions &amp; terms</strong>
-                    {perk.exclusions ? <div>{perk.exclusions}</div> : null}
-                    {(perk.blackout_dates ?? []).length ? <div>Not available on: {perk.blackout_dates.join(", ")}</div> : null}
-                    {perk.terms ? <div className="muted" style={{ whiteSpace: "pre-line" }}>{perk.terms}</div> : null}
-                  </div>
-                </div>
-              ) : null}
-            </div>
+            ) : null}
+            {!pending && perk.exclusions && !mentions(perk.full_description ?? "", perk.exclusions) ? (
+              <p className="pd-fine">{perk.exclusions}</p>
+            ) : null}
+            {perk.terms ? <p className="pd-fine">{perk.terms}</p> : null}
+            {!isTeaser && perk.usage_limit_per_member ? (
+              <p className="pd-fine">
+                Limit {perk.usage_limit_per_member} per member · you have used {perk.redemptions_used}
+              </p>
+            ) : null}
           </article>
         </div>
 
-        <aside className="detail-aside stack">
-          {/* 4. Provider contact */}
-          <section className="panel" aria-labelledby="provider-heading">
-            <h2 id="provider-heading" style={{ fontSize: "1.15rem" }}>
-              {perk.provider_name}
+        <aside className="pd-aside">
+          <section className="pd-about" aria-labelledby="provider-heading">
+            <h2 id="provider-heading" className="sr-only">
+              About {perk.provider_name}
             </h2>
-            {perk.provider_description ? <p className="muted">{perk.provider_description}</p> : null}
-            <div className="info-list">
-              {perk.provider_website && isSafeHttpUrl(perk.provider_website) ? (
-                <div className="info-item">
-                  <IconGlobe />
-                  <a href={perk.provider_website} target="_blank" rel="noopener noreferrer">
-                    {new URL(perk.provider_website).hostname.replace(/^www\./, "")}
-                  </a>
-                </div>
-              ) : null}
-              {perk.provider_email ? (
-                <div className="info-item">
-                  <IconMail />
-                  <a href={`mailto:${perk.provider_email}`}>{perk.provider_email}</a>
-                </div>
-              ) : null}
-              {perk.provider_phone ? (
-                <div className="info-item">
-                  <IconPhone />
-                  <a href={`tel:${perk.provider_phone.replace(/[^0-9+]/g, "")}`}>{perk.provider_phone}</a>
-                </div>
-              ) : null}
-              {perk.is_online_only ? (
-                <div className="info-item">
-                  <IconGlobe />
-                  <div>Online offer</div>
-                </div>
-              ) : null}
-              {locations.map((l: any, i: number) => {
-                const dir = directionsUrl(l);
-                return (
-                  <div className="info-item" key={i}>
-                    <IconPin />
-                    <div>
-                      {l.label ? <strong>{l.label}</strong> : null}
-                      <div>{[l.address_line, l.city, l.region, l.postal_code, l.country].filter(Boolean).join(", ")}</div>
+            {perk.provider_description ? <p>{perk.provider_description}</p> : null}
+            {hasContacts ? (
+              <ul className="pd-contacts">
+                {perk.provider_website && isSafeHttpUrl(perk.provider_website) ? (
+                  <ContactRow icon={<IconGlobe size={20} />} label="Website">
+                    <a href={perk.provider_website} target="_blank" rel="noopener noreferrer">
+                      {displayUrl(perk.provider_website)}
+                    </a>
+                  </ContactRow>
+                ) : null}
+                {perk.provider_email ? (
+                  <ContactRow icon={<IconMail size={20} />} label="Email">
+                    <a href={`mailto:${perk.provider_email}`}>{perk.provider_email}</a>
+                  </ContactRow>
+                ) : null}
+                {perk.provider_phone ? (
+                  <ContactRow icon={<IconPhone size={20} />} label="Phone">
+                    <a href={`tel:${perk.provider_phone.replace(/[^0-9+]/g, "")}`}>{perk.provider_phone}</a>
+                  </ContactRow>
+                ) : null}
+                {locations.map((l: any, i: number) => {
+                  const dir = directionsUrl(l);
+                  const text = [l.address_line, l.city, l.region].filter(Boolean).join(", ");
+                  return (
+                    <ContactRow key={i} icon={<IconDirections size={20} />} label={l.label ? `Directions · ${l.label}` : "Directions"}>
                       {dir ? (
-                        <a className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} href={dir} target="_blank" rel="noopener noreferrer">
-                          <IconDirections size={16} /> Directions
+                        <a href={dir} target="_blank" rel="noopener noreferrer">
+                          {text}
                         </a>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                      ) : (
+                        text
+                      )}
+                    </ContactRow>
+                  );
+                })}
+              </ul>
+            ) : null}
           </section>
 
-          {/* 5. Member card */}
-          {pending ? null : inPerson || !online ? (
+          {pending ? null : isTeaser ? (
+            <LockedMemberCard signInHref={signInHref} />
+          ) : inPerson || perk.pos_reference ? (
             <MemberCard
               programId={perk.program.id}
               perkId={perk.id}
               providerRef={perk.provider_ref}
+              perkQr={perk.pos_reference || null}
+              perkLabel={`${perk.provider_name} — ${perk.title}`}
               memberName={me?.user?.display_name || "Member"}
-              programName={perk.program.name}
+              programName={perk.program.org_kind === "culturosity" ? "Culturosity Perks" : perk.program.name}
               limitReached={limitReached}
             />
-          ) : (
-            <section className="member-card" aria-label="Member card">
-              <div className="vertical" aria-hidden>
-                <span>MEMBER</span>
+          ) : null}
+
+          {isTeaser ? (
+            <div className="pd-signin">
+              <strong>Free for Culturosity members</strong>
+              <p>Sign in to reveal promo codes, use perks and show your member card.</p>
+              <div className="row">
+                <Link className="btn btn-primary btn-sm" to={signInHref}>
+                  Sign in
+                </Link>
+                <Link className="btn btn-ghost btn-sm" to={`/auth/signup?next=${encodeURIComponent(location.pathname)}`}>
+                  Create a free account
+                </Link>
               </div>
-              <img className="card-logo" src="/brand/culturosity-logo.webp" alt="Culturosity" />
-              <div style={{ marginTop: 12, fontWeight: 600 }}>{me?.user?.display_name}</div>
-              <div style={{ fontSize: ".85rem", color: "#b4b4bf" }}>{perk.program.name}</div>
-              <p style={{ fontSize: ".85rem", color: "#b4b4bf", marginTop: 10, marginBottom: 0 }}>
-                This is an online offer — use the Use Perk button. No in-person code is needed.
-              </p>
-            </section>
-          )}
+            </div>
+          ) : null}
         </aside>
       </div>
     </div>

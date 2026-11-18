@@ -86,7 +86,7 @@ export const perkInputSchema = z
       instructions: z.string().trim().min(10, "Explain exactly how members redeem this offer").max(3000),
       promoCode: opt(z.string().trim().max(60)),
       usageLimitPerMember: opt(z.coerce.number().int().min(1).max(1000)),
-      posReference: opt(z.string().trim().max(120)),
+      posReference: opt(z.string().trim().max(500)),
     }),
     location: z.object({
       onlineOnly: z.boolean(),

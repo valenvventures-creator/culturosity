@@ -2486,3 +2486,460 @@ table.data tr.clickable {
 .legal-doc h3 { font-size: 1.02rem; margin: 18px 0 6px; }
 .legal-doc ul { padding-left: 1.3rem; margin: 0 0 12px; }
 .legal-doc li { margin-bottom: 6px; }
+
+/* ==========================================================================
+   Perk details (app-style): value pill + Use Perk, large image, green offer
+   card, provider about + contact rows, member card with the perk's QR code.
+   ========================================================================== */
+.pd {
+  --pd-green: #98f7b5; /* the offer-card green used in the Culturosity app */
+  --pd-pink: #b5005d;
+  max-width: 1180px;
+}
+.pd-top {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.pd-top-title {
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 1.05rem;
+}
+.pd-layout {
+  display: grid;
+  gap: 22px;
+}
+@media (min-width: 980px) {
+  .pd-layout {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 32px;
+    align-items: start;
+  }
+  .pd-aside {
+    position: sticky;
+    top: calc(var(--header-h) + 20px);
+  }
+}
+.pd-main,
+.pd-aside {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.pd-actionbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pd-pill {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  margin: 0 auto 0 0;
+  min-height: 48px;
+}
+.pd-value {
+  background: var(--pd-pink);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 12px 20px;
+  display: grid;
+  place-items: center;
+}
+.pd .pd-action {
+  appearance: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+  background: var(--brand-mint);
+  color: #000;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 12px 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  transition: filter var(--t-fast) var(--ease);
+}
+.pd .pd-action:hover {
+  filter: brightness(1.08);
+}
+.pd .pd-action:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: -5px;
+}
+.pd-fav {
+  flex: none;
+}
+.pd-image {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  aspect-ratio: 1262 / 880;
+  background: var(--charcoal-800);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+}
+.pd-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pd-provider {
+  font-size: 1.08rem;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.pd-card {
+  background: var(--pd-green);
+  color: #0b0b0d;
+  border-radius: var(--radius-lg);
+  padding: clamp(18px, 3vw, 28px);
+  line-height: 1.6;
+  font-size: 1rem;
+}
+.pd-card h1 {
+  font-size: clamp(1.35rem, 2.6vw, 1.9rem);
+  line-height: 1.25;
+  margin: 0 0 12px;
+  color: #000;
+}
+.pd-card p {
+  margin: 0 0 14px;
+}
+.pd-card ul {
+  margin: 0 0 14px;
+  padding-left: 20px;
+}
+.pd-card li {
+  margin: 2px 0;
+}
+.pd-card a {
+  color: #00422f !important;
+  font-weight: 600;
+  text-decoration: underline;
+}
+.pd-card > :last-child {
+  margin-bottom: 0;
+}
+.pd-when {
+  display: grid;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin: 0 0 16px;
+}
+.pd-when ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.pd-when li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-weight: 600;
+}
+.pd-when li svg {
+  margin-top: 4px;
+  flex: none;
+}
+.pd-when li.past {
+  opacity: 0.55;
+  font-weight: 400;
+}
+.pd-when-note {
+  font-weight: 400;
+}
+.pd-ends {
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+.pd-promo {
+  margin: 4px 0 16px;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.pd-promo-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.pd .pd-promo-code {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  color: #000 !important;
+  border: 2px dashed #0b0b0d;
+  border-radius: 14px;
+  padding: 10px 14px 10px 18px;
+  text-decoration: none !important;
+  max-width: 100%;
+}
+.pd-promo-code code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  overflow-wrap: anywhere;
+}
+.pd-promo-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  background: #000;
+  color: #fff;
+  border-radius: 999px;
+  padding: 6px 12px;
+  flex: none;
+}
+.pd .pd-promo-locked {
+  font-weight: 700;
+  gap: 8px;
+}
+.pd-redeem {
+  border-top: 1px solid rgba(0, 0, 0, 0.14);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+.pd-redeem p {
+  margin: 4px 0 0;
+}
+.pd-fine {
+  font-size: 0.88rem;
+  opacity: 0.85;
+}
+.pd-about {
+  display: grid;
+  gap: 14px;
+}
+.pd-about > p {
+  margin: 0;
+  color: var(--on-dark-muted);
+  line-height: 1.65;
+}
+.pd-contacts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pd-contact {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line-dark);
+}
+.pd-contact-icon {
+  color: var(--brand-mint);
+  padding-top: 2px;
+}
+.pd-contact-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.pd-contact-value {
+  overflow-wrap: anywhere;
+}
+.pd-contact-value a {
+  color: var(--brand-mint);
+  text-decoration: none;
+}
+.pd-contact-value a:hover {
+  text-decoration: underline;
+}
+.pd-signin {
+  border: 1px solid var(--line-dark);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  background: var(--charcoal-900);
+}
+.pd-signin p {
+  color: var(--on-dark-muted);
+  margin: 6px 0 12px;
+}
+
+/* Member card */
+.mcard-wrap {
+  display: grid;
+  gap: 10px;
+  scroll-margin-top: calc(var(--header-h) + 16px);
+}
+.mcard {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  background: #000;
+  color: #fff;
+  border-radius: 22px;
+  padding: 20px 64px 20px 22px;
+  min-height: 190px;
+  overflow: hidden;
+  border: 1px solid #23232b;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+.mcard-main {
+  display: grid;
+  gap: 10px;
+  align-content: center;
+}
+.mcard-logo {
+  height: clamp(64px, 9vw, 92px);
+  width: auto;
+  justify-self: start;
+}
+.mcard-name {
+  font-weight: 700;
+  font-size: 1rem;
+}
+.mcard-sub {
+  font-size: 0.8rem;
+  color: #b4b4bf;
+}
+.mc-qr {
+  background: #fff;
+  border-radius: 12px;
+  padding: 6px;
+  width: clamp(132px, 34vw, 168px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+.mc-qr svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.mc-qr-locked {
+  background: repeating-linear-gradient(45deg, #1b1b22 0 8px, #24242c 8px 16px);
+  color: var(--brand-mint);
+}
+.mcard-band {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 46px;
+  background: var(--brand-mint);
+  color: #000;
+  display: grid;
+  place-items: center;
+}
+.mcard-band span {
+  writing-mode: vertical-rl;
+  font-weight: 800;
+  letter-spacing: 0.42em;
+  font-size: 0.95rem;
+}
+.mc-hint {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--on-dark-muted);
+}
+.mc-verify {
+  border: 1px solid var(--line-dark);
+  border-radius: 14px;
+  padding: 10px 14px;
+  background: var(--charcoal-900);
+}
+.mc-verify summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.mc-verify[open] summary {
+  margin-bottom: 10px;
+}
+.mc-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--on-dark-muted);
+}
+.mc-warn {
+  color: #8a5a00;
+}
+:root:not([data-theme="light"]) .mc-warn {
+  color: var(--brand-lime);
+}
+.mc-err {
+  color: var(--danger);
+}
+.mc-token {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.mc-qr-sm {
+  width: 132px;
+  border: 1px solid var(--line-dark);
+}
+.mc-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.2rem;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+}
+@media (max-width: 420px) {
+  .mcard {
+    padding-right: 56px;
+  }
+  .mcard-band {
+    width: 40px;
+  }
+  .pd-value,
+  .pd .pd-action {
+    padding: 12px 15px;
+    font-size: 0.95rem;
+  }
+}
+
+/* Light theme */
+:root[data-theme="light"] .theme-area .pd .pd-action {
+  color: #000;
+}
+:root[data-theme="light"] .theme-area .pd-contact-icon,
+:root[data-theme="light"] .theme-area .pd-contact-value a {
+  color: #0a6b51;
+}
+:root[data-theme="light"] .theme-area .pd-image {
+  box-shadow: var(--shadow-light);
+}
+:root[data-theme="light"] .theme-area .pd-pill {
+  box-shadow: 0 4px 16px rgba(17, 17, 20, 0.12);
+}
+:root[data-theme="light"] .theme-area .pd-card {
+  box-shadow: var(--shadow-light);
+}
+:root[data-theme="light"] .theme-area .mcard {
+  box-shadow: 0 14px 40px rgba(17, 17, 20, 0.22);
+}
+:root[data-theme="light"] .theme-area .mcard .mcard-name {
+  color: #fff;
+}

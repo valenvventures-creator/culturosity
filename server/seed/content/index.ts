@@ -4,6 +4,8 @@ import type { Db, Queryable } from "../../db";
 import { newProviderRef } from "../../lib/publish";
 import { CULTUROSITY_PERK_LISTINGS, listingLabel, type ListingSpec } from "./0001_culturosity_perks_listings";
 import { CULTUROSITY_PERK_LISTINGS_MORE } from "./0002_culturosity_perks_listings_more";
+import { NEW_LISTINGS, PERK_DETAILS, PROVIDERS } from "./0003_culturosity_perk_details";
+import { zonedToUtc } from "../../../shared/time";
 
 interface Pack {
   name: string;
@@ -72,6 +74,78 @@ async function addListings(q: Queryable, specs: ListingSpec[], olderByMinutes = 
   return added;
 }
 
+const TZ = "America/Winnipeg";
+
+/** Fill in the full details of Culturosity perks (pack 0003). Updates existing rows in place. */
+async function applyPerkDetails(q: Queryable): Promise<string> {
+  const { org_id } = await culturosityProgram(q);
+  const added = await addListings(q, NEW_LISTINGS);
+  let providers = 0;
+  for (const p of PROVIDERS) {
+    const r = await q.query(
+      `update providers set description = $3, website = $4, public_email = $5, updated_at = now()
+        where org_id = $1 and lower(name) = lower($2)`,
+      [org_id, p.name, p.about, p.website, p.email],
+    );
+    providers += r.rowCount ?? 0;
+  }
+  let updated = 0;
+  const missing: string[] = [];
+  for (const d of PERK_DETAILS) {
+    const row = (
+      await q.query<{ id: string }>(
+        `select pk.id from perks pk join providers pv on pv.id = pk.provider_id
+          where pk.org_id = $1 and lower(pv.name) = lower($2) and lower(pk.title) = lower($3) and pk.archived_at is null`,
+        [org_id, d.provider, d.title],
+      )
+    ).rows[0];
+    if (!row) {
+      missing.push(`${d.provider} — ${d.title}`);
+      continue;
+    }
+    const endsAt = d.endsAt ? zonedToUtc(d.endsAt.date, d.endsAt.time, TZ) : null;
+    await q.query(
+      `update perks set title = $2, short_description = $3, full_description = $4, promo_code = $5,
+              redemption_instructions = $6, redemption_method = $7, redemption_url = $8, pos_reference = $9,
+              address_line = $10, city = $11, region = case when $11::text is null then region else 'MB' end,
+              is_online_only = $12, is_ongoing = $13, ends_at = $14, exclusions = $15, timezone = $16,
+              details_pending = false, updated_at = now()
+        where id = $1`,
+      [
+        row.id,
+        d.newTitle ?? d.title,
+        d.shortDescription,
+        d.description,
+        d.promo ?? null,
+        d.howToRedeem,
+        d.method,
+        d.method === "in_person" ? null : d.url,
+        d.qr,
+        d.address ?? null,
+        d.city ?? null,
+        d.method === "online" && !d.address && !d.city,
+        !endsAt,
+        endsAt,
+        d.exclusions ?? "",
+        TZ,
+      ],
+    );
+    await q.query(`delete from perk_occurrences where perk_id = $1`, [row.id]);
+    for (const o of d.occurrences ?? []) {
+      await q.query(`insert into perk_occurrences (perk_id, starts_at, ends_at, venue, notes) values ($1,$2,$3,$4,$5)`, [
+        row.id,
+        zonedToUtc(o.date, o.start, TZ),
+        o.end ? zonedToUtc(o.date, o.end, TZ) : null,
+        o.venue ?? "",
+        o.notes ?? "",
+      ]);
+    }
+    updated++;
+  }
+  if (missing.length) console.warn(`[content] perk details not applied (perk not found): ${missing.join("; ")}`);
+  return `${added} perks added, ${updated} perks given full details, ${providers} provider profiles updated`;
+}
+
 const PACKS: Pack[] = [
   {
     name: "0001_culturosity_perks_listings",
@@ -79,8 +153,9 @@ const PACKS: Pack[] = [
   },
   {
     name: "0002_culturosity_perks_listings_more",
-    apply: async (q) => `${await addListings(q, CULTUROSITY_PERK_LISTINGS_MORE)} Culturosity perks added (details pending)`,
+    apply: async (q) => `${await addListings(q, CULTUROSITY_PERK_LISTINGS_MORE, 5)} Culturosity perks added (details pending)`,
   },
+  { name: "0003_culturosity_perk_details", apply: applyPerkDetails },
 ];
 
 export async function applyContentPacks(db: Db): Promise<string[]> {

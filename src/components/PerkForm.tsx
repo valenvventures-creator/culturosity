@@ -508,7 +508,7 @@ export function PerkForm({
               <TextField label="Promo code (optional)" value={form.redemption.promoCode} onChange={(e) => set("redemption.promoCode", e.target.value)} hint="Only shown to eligible, signed-in members." />
               <TextField label="Uses per member (optional)" type="number" min={1} value={form.redemption.usageLimitPerMember} error={err("redemption.usageLimitPerMember")} onChange={(e) => set("redemption.usageLimitPerMember", e.target.value)} hint="Enforced when providers verify codes." />
             </div>
-            <TextField label="Provider POS reference (optional)" value={form.redemption.posReference} onChange={(e) => set("redemption.posReference", e.target.value)} hint="An existing merchant discount code your POS uses. Culturosity generates the provider QR identity automatically." />
+            <TextField label="Perk QR code for POS (optional)" value={form.redemption.posReference} onChange={(e) => set("redemption.posReference", e.target.value)} hint="The value the perk's QR code on the member card should contain — a link or code the provider's point-of-sale system recognises. Leave empty to show only the one-time verification code." />
             <hr className="divider" />
             <Checkbox label="This is an online-only offer (no physical location)" checked={form.location.onlineOnly} onChange={(v) => set("location.onlineOnly", v)} />
             {err("location.onlineOnly") ? <div className="error" style={{ color: "var(--danger)", fontWeight: 600 }}>{err("location.onlineOnly")}</div> : null}

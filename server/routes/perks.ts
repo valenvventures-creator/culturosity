@@ -204,7 +204,35 @@ perkRoutes.get("/perks/:perkId", async (c) => {
     [perkId, config.mode === "demo"],
   );
   if (!t.rows[0]) throw notFound("This offer is not available, or you are not eligible to view it.");
-  return c.json({ access: "teaser", perk: shapeListing(t.rows[0], await newCutoff(c)) });
+  // Public details: description, dates and the provider's public contact information. Promo codes,
+  // Use Perk links and the perk's POS QR code stay member-only (the code is masked in the text too).
+  const extra = (
+    await db.query<any>(
+      `select pk.full_description, pk.redemption_instructions, pk.exclusions, pk.terms, pk.promo_code, pk.address_line,
+              pk.postal_code, pk.lat, pk.lng, pv.description as provider_description, pv.website as provider_website,
+              pv.public_email as provider_email, pv.public_phone as provider_phone
+         from perks pk join providers pv on pv.id = pk.provider_id where pk.id = $1`,
+      [perkId],
+    )
+  ).rows[0];
+  const [occ, locs] = await Promise.all([
+    db.query(`select id, starts_at, ends_at, venue, notes from perk_occurrences where perk_id = $1 order by starts_at`, [perkId]),
+    db.query(`select label, address_line, city, region, postal_code, country, lat, lng from provider_locations where provider_id = $1`, [t.rows[0].provider_id]),
+  ]);
+  const mask = (text: string) => (extra.promo_code ? text.split(extra.promo_code).join("••••••") : text);
+  const { promo_code, ...pub } = extra;
+  return c.json({
+    access: "teaser",
+    perk: {
+      ...shapeListing(t.rows[0], await newCutoff(c)),
+      ...pub,
+      full_description: mask(extra.full_description),
+      redemption_instructions: mask(extra.redemption_instructions),
+      has_promo: Boolean(promo_code),
+      occurrences: occ.rows,
+      provider_locations: locs.rows,
+    },
+  });
 });
 
 // ---- Favourites ----
