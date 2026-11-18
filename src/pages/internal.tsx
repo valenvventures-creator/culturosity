@@ -5,7 +5,7 @@ import { api, ApiError, qs } from "../lib/api";
 import { useMe, isInternal } from "../lib/session";
 import { AppShell, PageHeader } from "../components/AppShell";
 import { Checkbox, Drawer, EmptyState, ErrorAlert, SelectField, Spinner, Stat, TextArea, TextField, useDocumentTitle, useToast, DotField, Logo } from "../components/ui";
-import { IconLock } from "../components/Icons";
+import { IconExternal, IconLock } from "../components/Icons";
 import { BottomNav, DemoBanner, SiteHeader } from "../components/Layout";
 import {
   OUTREACH_CHANNELS,
@@ -1031,7 +1031,7 @@ export function DemoGuidePage() {
     <Wrap>
       <PageHeader title="Demo Guide" eyebrow="Admin Research & Sales" />
       <div className="alert alert-info" style={{ marginBottom: 14 }}>
-        Every step opens a real page on the live site. Look around freely, but don’t submit forms during a demo unless you mean to.
+        Every step opens a real page on the live site in a new tab, so this guide stays open here. Look around freely, but don’t submit forms during a demo unless you mean to.
       </div>
       <ol style={{ display: "grid", gap: 12, paddingLeft: 0, listStyle: "none" }}>
         {steps.map(([t, to, d], i) => (
@@ -1042,7 +1042,10 @@ export function DemoGuidePage() {
                 <h3 style={{ margin: "4px 0" }}>{t}</h3>
                 <p className="muted" style={{ margin: 0 }}>{d}</p>
               </div>
-              <Link className="btn btn-dark" to={to}>Open</Link>
+              {/* New tab, so the Demo Guide stays open in this one. */}
+              <a className="btn btn-dark" href={to} target="_blank" rel="noopener" aria-label={`Open step ${i + 1} in a new tab: ${t}`}>
+                Open <IconExternal size={16} />
+              </a>
             </div>
           </li>
         ))}
