@@ -661,3 +661,42 @@ describe("sales team sign-up links", () => {
     expect((await rep.get("/internal/research")).status).toBe(404);
   });
 });
+
+describe("removing an extra super admin account", () => {
+  it("lets a super admin delete another super admin's account, with safeguards", async () => {
+    await ctx.db.query(`delete from rate_limits`); // many sign-ins earlier in this file
+    const sa = client(app, "10.11.0.1");
+    await sa.signIn("super@demo.culturosity.test");
+    await sa.post("/internal/gate/unlock", { code: TEST_GATE_CODE });
+    const { passwordAuth } = await import("../server/lib/auth");
+    const mk = async (email: string) => {
+      const id = await ctx.db.tx((q) => passwordAuth.createPasswordUser(q, { email, password: "a-long-admin-password-1", displayName: "Old Admin", verified: true }));
+      await ctx.db.query(`insert into platform_grants (user_id, grant_name) values ($1,'super_admin')`, [id]);
+      return id;
+    };
+    const oldId = await mk("old-admin@example.com");
+    // Make it an owner of the Culturosity workspace (shared with the current super admin) and sole owner of a test workspace.
+    const cul = (await ctx.db.query<{ id: string }>(`select id from organizations where slug = 'culturosity'`)).rows[0].id;
+    await ctx.db.query(`insert into memberships (user_id, org_id, role) values ($1,$2,'owner')`, [oldId, cul]);
+    const solo = (await ctx.db.query<{ id: string }>(`insert into organizations (slug, name, kind) values ('old-admin-test','Old Admin Test Co','client') returning id`)).rows[0].id;
+    await ctx.db.query(`insert into memberships (user_id, org_id, role) values ($1,$2,'owner')`, [oldId, solo]);
+
+    const me = (await sa.get("/me")).json.user.id;
+    expect((await sa.post(`/internal/team/${me}/delete-account`, { password: PASSWORD })).status).toBe(400); // not yourself
+    expect((await sa.post(`/internal/team/${oldId}/delete-account`, { password: "wrong-password" })).status).toBe(400);
+    const blocked = await sa.post(`/internal/team/${oldId}/delete-account`, { password: PASSWORD });
+    expect(blocked.status).toBe(409); // only owner of a workspace
+    expect(blocked.json.error.message).toContain("Old Admin Test Co");
+    await ctx.db.query(`delete from organizations where id = $1`, [solo]);
+
+    const sales = client(app, "10.11.0.2");
+    await sales.signIn("sales@demo.culturosity.test");
+    expect((await sales.post(`/internal/team/${oldId}/delete-account`, { password: PASSWORD })).status).toBe(404);
+
+    expect((await sa.post(`/internal/team/${oldId}/delete-account`, { password: PASSWORD })).status).toBe(200);
+    expect((await ctx.db.query(`select 1 from app_users where id = $1`, [oldId])).rows).toHaveLength(0);
+    expect((await ctx.db.query(`select 1 from platform_grants where user_id = $1`, [oldId])).rows).toHaveLength(0);
+    // The Culturosity workspace still has its other owner.
+    expect((await ctx.db.query(`select 1 from memberships where org_id = $1 and role = 'owner' and status = 'active'`, [cul])).rows.length).toBeGreaterThan(0);
+  });
+});

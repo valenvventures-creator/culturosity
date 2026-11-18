@@ -1305,6 +1305,48 @@ export function useInternalParams() {
   return useParams();
 }
 
+/** Delete another super admin's account. Asks for the current super admin's password. */
+function DeleteAdminAccount({ id, email, onDone }: { id: string; email: string; onDone: () => void }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
+  if (!open)
+    return (
+      <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => setOpen(true)}>
+        Delete account…
+      </button>
+    );
+  return (
+    <form
+      style={{ display: "grid", gap: 8, minWidth: 220 }}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setErr(undefined);
+        setBusy(true);
+        try {
+          await api.post(`/internal/team/${id}/delete-account`, { password });
+          toast(`${email} was deleted`);
+          onDone();
+        } catch (x) {
+          setErr((x as ApiError).fields?.password ?? (x as Error).message);
+          setBusy(false);
+        }
+      }}
+    >
+      <div style={{ fontSize: ".82rem" }}>
+        Permanently delete <strong>{email}</strong> and its admin access? This can’t be undone.
+      </div>
+      <TextField label="Your password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} error={err} autoComplete="current-password" required />
+      <div className="row" style={{ gap: 6 }}>
+        <button className="btn btn-danger btn-sm" disabled={busy || !password}>{busy ? "Deleting…" : "Delete account"}</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
 export function SalesTeamPage() {
   useDocumentTitle("Sales team");
   const { data: me } = useMe();
@@ -1400,8 +1442,10 @@ export function SalesTeamPage() {
                           >
                             Remove
                           </button>
+                        ) : t.email === me?.user?.email ? (
+                          <span className="muted" style={{ fontSize: ".82rem" }}>You</span>
                         ) : (
-                          <span className="muted" style={{ fontSize: ".82rem" }}>{t.email === me?.user?.email ? "You" : "Protected"}</span>
+                          <DeleteAdminAccount id={t.id} email={t.email} onDone={refresh} />
                         )}
                       </td>
                     </tr>

@@ -816,6 +816,38 @@ internalRoutes.delete("/internal/team/invitations/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Delete another super admin's account entirely (super admins only, password required). */
+internalRoutes.post("/internal/team/:userId/delete-account", async (c) => {
+  const { user } = await requireUnlock(c, ["super_admin"]);
+  const { db } = c.get("deps");
+  await rateLimit(db, `admin-delete:${user.id}`, 10, 3600);
+  const target = c.req.param("userId");
+  if (target === user.id) throw badRequest("You can't delete your own account here.");
+  const { password } = (await c.req.json().catch(() => ({}))) as { password?: string };
+  const { passwordAuth } = await import("../lib/auth");
+  const ok = password ? await passwordAuth.verifyPassword(db, user.email, password) : null;
+  if (!ok || ok.id !== user.id) throw badRequest("Your password is incorrect.", { password: "Incorrect password" });
+  const t = await db.query<{ email: string }>(
+    `select u.email from app_users u join platform_grants g on g.user_id = u.id and g.grant_name = 'super_admin' and g.revoked_at is null where u.id = $1`,
+    [target],
+  );
+  if (!t.rows[0]) throw notFound("That super admin account wasn't found.");
+  // Never leave a workspace without an active owner.
+  const solo = await db.query<{ name: string }>(
+    `select o.name from memberships m join organizations o on o.id = m.org_id
+      where m.user_id = $1 and m.role = 'owner' and m.status = 'active'
+        and not exists (select 1 from memberships m2 where m2.org_id = m.org_id and m2.role = 'owner' and m2.status = 'active' and m2.user_id <> $1)`,
+    [target],
+  );
+  if (solo.rows.length)
+    throw conflict(`This account is the only owner of ${solo.rows.map((r) => r.name).join(", ")}. Make someone else an owner there first (Manage → Members & roles), or delete that workspace.`);
+  await db.tx(async (q) => {
+    await q.query(`delete from app_users where id = $1`, [target]); // sessions, grants, memberships and unlocks cascade
+    await audit(q, { actor: user.id, action: "admin.account_deleted", targetType: "user", targetId: target, meta: { email: t.rows[0].email } });
+  });
+  return c.json({ ok: true });
+});
+
 internalRoutes.post("/internal/team/:userId/remove", async (c) => {
   const { user } = await requireUnlock(c, ["super_admin"]);
   const { db } = c.get("deps");
