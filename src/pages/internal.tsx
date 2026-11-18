@@ -45,7 +45,10 @@ export function InternalLayout() {
     <AppShell
       sections={[
         { title: "Internal", items: [{ to: `${B}/overview`, label: "Overview" }, { to: `${B}/research`, label: "Research Directory" }, { to: `${B}/outreach`, label: "Sales Outreach" }, { to: `${B}/pipeline`, label: "Pipeline" }, { to: `${B}/demo-guide`, label: "Demo Guide" }] },
-        { title: "Operations", items: [{ to: `${B}/services`, label: "Service queue" }, { to: `${B}/workspaces`, label: "Client workspaces" }, { to: `/app/culturosity/manage`, label: "Culturosity catalogue" }, { to: `${B}/settings`, label: "Access settings" }] },
+        // Salespeople see research and sales only; the rest is for super admins.
+        me.grants?.includes("super_admin")
+          ? { title: "Operations", items: [{ to: `${B}/services`, label: "Service queue" }, { to: `${B}/workspaces`, label: "Client workspaces" }, { to: `/app/culturosity/manage`, label: "Culturosity catalogue" }, { to: `${B}/team`, label: "Sales team" }, { to: `${B}/settings`, label: "Access settings" }] }
+          : { title: "Operations", items: [{ to: `${B}/services`, label: "Service queue" }] },
       ]}
       header={<LockBar expiresAt={gate.data.expiresAt} idle={gate.data.idleMinutes} />}
     />
@@ -1008,6 +1011,7 @@ export function PipelinePage() {
 
 // ======================= Demo guide =======================
 export function DemoGuidePage() {
+  const superAdmin = Boolean(useMe().data?.grants?.includes("super_admin"));
   useDocumentTitle("Demo Guide");
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -1023,6 +1027,7 @@ export function DemoGuidePage() {
   return (
     <Wrap>
       <PageHeader title="Demo Guide" eyebrow="Admin Research & Sales">
+        {superAdmin ? (
         <button
           className="btn btn-ghost"
           disabled={busy}
@@ -1041,6 +1046,7 @@ export function DemoGuidePage() {
         >
           {busy ? "Resetting…" : "Reset demo data"}
         </button>
+        ) : null}
       </PageHeader>
       <div className="alert alert-warning" style={{ marginBottom: 14 }}>
         Use only the isolated demo organizations (Northwind Demo Co., Harbour Demo Union, Culturosity Perks — Demo). Demo offers are fictional and never grant a real merchant benefit.
@@ -1263,4 +1269,132 @@ export function AccessSettingsPage() {
 
 export function useInternalParams() {
   return useParams();
+}
+
+export function SalesTeamPage() {
+  useDocumentTitle("Sales team");
+  const { data: me } = useMe();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { data, isLoading, error } = useQuery<any>({ queryKey: ["internal", "team"], queryFn: () => api.get("/internal/team"), enabled: Boolean(me?.grants?.includes("super_admin")) });
+  const [email, setEmail] = useState("");
+  const [emailErr, setEmailErr] = useState<string | undefined>();
+  const [created, setCreated] = useState<{ email: string; link: string; expiresAt: string; emailed: boolean } | null>(null);
+  const refresh = () => qc.invalidateQueries({ queryKey: ["internal", "team"] });
+  if (!me?.grants?.includes("super_admin")) return <Wrap><EmptyState title="Super admin only" /></Wrap>;
+
+  async function copy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Link copied");
+    } catch {
+      toast("Select the link to copy it", "error");
+    }
+  }
+
+  return (
+    <Wrap>
+      <PageHeader title="Sales team" eyebrow="Operations" />
+      <p className="muted" style={{ maxWidth: 720, marginTop: 0 }}>
+        Salespeople get Admin Research &amp; Sales only — Overview, Research Directory, Sales Outreach, Pipeline, Demo Guide and the Service queue. They
+        can’t see the catalogue, client workspaces or settings, and they still need the access code to open the area.
+      </p>
+      <div className="grid-2" style={{ alignItems: "start" }}>
+        <form
+          className="panel"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setEmailErr(undefined);
+            try {
+              const r = await api.post<{ link: string; expiresAt: string; emailed: boolean }>("/internal/team/invitations", { email });
+              setCreated({ email, ...r });
+              setEmail("");
+              refresh();
+            } catch (x) {
+              setEmailErr((x as ApiError).fields?.email ?? (x as Error).message);
+            }
+          }}
+        >
+          <h2 style={{ fontSize: "1.15rem", marginTop: 0 }}>Add a salesperson</h2>
+          <TextField label="Their email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} error={emailErr} required />
+          <button className="btn btn-primary" type="submit" style={{ marginTop: 12 }}>Create sign-up link</button>
+          {created ? (
+            <div className="alert alert-success" role="status" style={{ marginTop: 14, display: "grid", gap: 8 }}>
+              <div>
+                Sign-up link for <strong>{created.email}</strong> — valid until {new Date(created.expiresAt).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })}, works once.
+                {created.emailed ? " It was also emailed to them." : " Email isn’t connected yet, so send it to them yourself."}
+              </div>
+              <code style={{ overflowWrap: "anywhere", fontSize: ".85rem" }}>{created.link}</code>
+              <div><button type="button" className="btn btn-dark btn-sm" onClick={() => copy(created.link)}>Copy link</button></div>
+              <div className="muted" style={{ fontSize: ".82rem" }}>For security the link is shown only now. If it’s lost, create a new one — the old one stops working.</div>
+            </div>
+          ) : null}
+        </form>
+
+        <section className="panel">
+          <h2 style={{ fontSize: "1.15rem", marginTop: 0 }}>People with admin access</h2>
+          {error ? <ErrorAlert error={error} /> : null}
+          {isLoading ? <Spinner /> : null}
+          {data ? (
+            <div className="table-wrap">
+              <table className="data">
+                <thead><tr><th>Person</th><th>Access</th><th /></tr></thead>
+                <tbody>
+                  {data.team.map((t: any) => (
+                    <tr key={`${t.id}-${t.grant_name}`}>
+                      <td><div style={{ fontWeight: 600 }}>{t.display_name}</div><div className="muted" style={{ fontSize: ".85rem" }}>{t.email}</div></td>
+                      <td>{t.grant_name === "super_admin" ? "Super admin" : "Salesperson"}</td>
+                      <td>
+                        {t.grant_name === "sales_admin" ? (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={async () => {
+                              if (!confirm(`Remove ${t.email} from the sales team? They lose access immediately.`)) return;
+                              try {
+                                await api.post(`/internal/team/${t.id}/remove`);
+                                toast("Access removed");
+                                refresh();
+                              } catch (e: any) {
+                                toast(e.message, "error");
+                              }
+                            }}
+                          >
+                            Remove
+                          </button>
+                        ) : (
+                          <span className="muted" style={{ fontSize: ".82rem" }}>{t.email === me?.user?.email ? "You" : "Protected"}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {data?.invitations.length ? (
+            <>
+              <h3 style={{ fontSize: "1rem", marginTop: 18 }}>Unused sign-up links</h3>
+              <ul style={{ paddingLeft: 18, display: "grid", gap: 6 }}>
+                {data.invitations.map((i: any) => (
+                  <li key={i.id}>
+                    {i.email} <span className="muted">· expires {new Date(i.expires_at).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}</span>{" "}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={async () => {
+                        await api.del(`/internal/team/invitations/${i.id}`);
+                        toast("Link cancelled");
+                        refresh();
+                      }}
+                    >
+                      Cancel link
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+        </section>
+      </div>
+    </Wrap>
+  );
 }

@@ -77,7 +77,7 @@ function AccountMenu({ me }: { me: Me }) {
           {(me.providerAssignments ?? []).length || adminOrgs.length ? <MenuLink to="/provider/verify">Verify a redemption</MenuLink> : null}
           {me.grants?.includes("super_admin") ? <MenuLink to="/app/culturosity/manage">Manage Culturosity catalogue</MenuLink> : null}
           {isInternal(me) ? <MenuLink to="/culturosity/admin">Admin Research &amp; Sales</MenuLink> : null}
-          <MenuLink to="/start">Create a company workspace</MenuLink>
+          {me.grants?.includes("sales_admin") && !me.grants?.includes("super_admin") ? null : <MenuLink to="/start">Create a company workspace</MenuLink>}
           <button className="btn btn-ghost btn-block" style={{ marginTop: 6 }} onClick={signOut}>
             Sign out
           </button>

@@ -53,7 +53,7 @@ export async function orgBySlug(q: Queryable, slug: string): Promise<OrgRow | nu
 
 /**
  * Resolve an org the caller may act in with one of `roles`.
- * Super admins may manage any workspace; sales admins only demo workspaces.
+ * Super admins may manage any workspace. Sales admins get no workspace admin rights.
  * Missing access returns 404 so org existence is not revealed.
  */
 export async function requireOrgRole(c: Ctx, slug: string, roles: OrgRole[]) {
@@ -64,11 +64,11 @@ export async function requireOrgRole(c: Ctx, slug: string, roles: OrgRole[]) {
   const m = await activeMembership(db, user.id, org.id);
   const grants = await grantsFor(db, user.id);
   // A paused workspace is closed to everyone in it (owners included) until a Culturosity super admin resumes it.
-  if (org.status === "suspended" && !grants.has("super_admin") && (m || (grants.has("sales_admin") && org.is_demo)))
+  if (org.status === "suspended" && !grants.has("super_admin") && m)
     throw new AppError(423, "workspace_paused", "This workspace is paused by Culturosity. Contact Culturosity to restore access.");
   if (m && roles.includes(m.role)) return { user, org, membership: m, elevated: false as const };
+  // Only super admins get elevated access to workspaces. Salespeople have no workspace admin rights.
   if (grants.has("super_admin")) return { user, org, membership: m, elevated: true as const };
-  if (grants.has("sales_admin") && org.is_demo) return { user, org, membership: m, elevated: true as const };
   if (m) throw forbidden("Your role in this workspace does not allow that.");
   throw notFound("Workspace not found.");
 }

@@ -223,6 +223,77 @@ export function ResetPage() {
   );
 }
 
+/** Private sign-up link for Culturosity salespeople (created by a super admin in Admin → Sales team). */
+export function SalesSignUpPage() {
+  useDocumentTitle("Join the Culturosity sales team");
+  const { token = "" } = useParams();
+  const nav = useNavigate();
+  const qc = useQueryClient();
+  const { data, error, isLoading } = useQuery<any>({ queryKey: ["staff-invite", token], queryFn: () => api.get(`/staff-invitations/${token}`), retry: false });
+  const [f, setF] = useState({ displayName: "", password: "" });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const inv = data?.invitation;
+  return (
+    <AuthCard title="Join the Culturosity sales team" sub="Your account gives you access to Admin Research & Sales: the research directory, outreach, pipeline and demo guide.">
+      {isLoading ? <Spinner /> : null}
+      {error ? <ErrorAlert error={error} /> : null}
+      {inv ? (
+        inv.accepted ? (
+          <div className="alert alert-info">
+            This link was already used. <Link to="/auth/signin?next=/culturosity/admin">Sign in</Link> to continue.
+          </div>
+        ) : inv.expired ? (
+          <div className="alert alert-warning">This sign-up link has expired. Ask Culturosity for a new one.</div>
+        ) : (
+          <form
+            className="stack"
+            style={{ display: "grid", gap: 12 }}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setErr(null);
+              setErrors({});
+              setBusy(true);
+              try {
+                const r = await api.post<{ redirect: string }>(`/staff-invitations/${token}/accept`, f);
+                await qc.invalidateQueries({ queryKey: ["me"] });
+                nav(r.redirect, { replace: true });
+              } catch (x) {
+                setErrors((x as ApiError).fields ?? {});
+                setErr(x);
+                setBusy(false);
+              }
+            }}
+          >
+            <TextField label="Email" value={inv.email} readOnly disabled />
+            {inv.hasAccount ? (
+              <p className="muted" style={{ margin: 0 }}>You already have a Culturosity account with this email. Enter its password to add sales access.</p>
+            ) : (
+              <TextField label="Your name" value={f.displayName} onChange={(e) => setF({ ...f, displayName: e.target.value })} error={errors.displayName} autoComplete="name" required />
+            )}
+            <TextField
+              label={inv.hasAccount ? "Password" : "Create a password"}
+              type="password"
+              value={f.password}
+              onChange={(e) => setF({ ...f, password: e.target.value })}
+              error={errors.password}
+              hint={inv.hasAccount ? undefined : "At least 12 characters."}
+              autoComplete={inv.hasAccount ? "current-password" : "new-password"}
+              required
+            />
+            {err ? <ErrorAlert error={err} /> : null}
+            <button className="btn btn-primary btn-block" type="submit" disabled={busy}>
+              {busy ? "Setting up…" : inv.hasAccount ? "Add sales access" : "Create my account"}
+            </button>
+            <p className="muted" style={{ fontSize: ".85rem", margin: 0 }}>You'll also need the access code from Culturosity to open the research and sales area.</p>
+          </form>
+        )
+      ) : null}
+    </AuthCard>
+  );
+}
+
 export function InvitePage() {
   useDocumentTitle("Invitation");
   const { token = "" } = useParams();

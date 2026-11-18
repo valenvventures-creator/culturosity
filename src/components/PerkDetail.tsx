@@ -409,14 +409,11 @@ export function PerkDetailPage({ perkId, programId, backTo, backLabel }: { perkI
 
           {isTeaser ? (
             <div className="pd-signin">
-              <strong>Free for Culturosity members</strong>
-              <p>Sign in to reveal promo codes, use perks and show your member card.</p>
+              <strong>For Culturosity members</strong>
+              <p>Members see promo codes, use perks and show their member card in the Culturosity app or after signing in here.</p>
               <div className="row">
                 <Link className="btn btn-primary btn-sm" to={signInHref}>
                   Sign in
-                </Link>
-                <Link className="btn btn-ghost btn-sm" to={`/auth/signup?next=${encodeURIComponent(location.pathname)}`}>
-                  Create a free account
                 </Link>
               </div>
             </div>

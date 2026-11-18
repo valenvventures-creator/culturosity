@@ -34,6 +34,12 @@ Date: 2026-11-18.
 - **Pause** sets the workspace to `suspended`: everyone in it — owner, admins, provider managers, members — gets "This workspace is paused by Culturosity". Nothing is removed; **Resume** restores access.
 - **Delete** requires typing the workspace name and the super admin's own password. It permanently removes the workspace with its programs, offers, providers, memberships, invitations, uploads and reports; user accounts are kept. Recorded in the audit log. The Culturosity workspace itself can't be paused or deleted.
 
+### Sales team (salespeople)
+
+- **Admin → Sales team** (super admins only): enter a salesperson's email to create a private, single-use sign-up link (valid 7 days; only its hash is stored). Email isn't connected yet, so copy the link and send it; it is also queued for email for when a provider is configured. Unused links can be cancelled; salespeople can be removed (access ends immediately).
+- The link opens `/auth/sales/:token`: the person sets their name and password (or connects an existing account with its password) and gets the `sales_admin` role. They still need the numeric access code to open the area.
+- Salespeople can use Overview, Research Directory, Sales Outreach, Pipeline, Demo Guide and the Service queue. They **cannot** change the access code, manage the sales team, see or manage any workspace (including the Culturosity catalogue), pause/delete workspaces, reset demo data or create workspaces. Super admin access can't be removed from the site.
+
 ## Tests run
 
 - `npm test`: 30 tests passed.

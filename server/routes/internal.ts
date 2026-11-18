@@ -4,9 +4,9 @@ import { requireGrant, requireUnlock, grantsFor } from "../lib/authz";
 import { requireVerified } from "../lib/auth";
 import { AppError, badRequest, conflict, forbidden, fromZod, notFound } from "../lib/errors";
 import { audit, rateLimit, sourceHash } from "../lib/security";
-import { hashSecret, verifySecret } from "../lib/crypto";
+import { hashSecret, verifySecret, randomToken, sha256 } from "../lib/crypto";
 import { getSetting, setSetting } from "../lib/settings";
-import { researchOrgSchema, outreachRequestSchema, PIPELINE_STAGES, OUTREACH_OBJECTIVES } from "../../shared/schemas";
+import { emailSchema, researchOrgSchema, outreachRequestSchema, PIPELINE_STAGES, OUTREACH_OBJECTIVES } from "../../shared/schemas";
 import { parseCsvObjects, toCsv } from "../../shared/csv";
 import { templateOutreach, type OutreachContext } from "../lib/outreach";
 import { z } from "zod";
@@ -634,7 +634,7 @@ internalRoutes.post("/internal/outreach/drafts", async (c) => {
 
 // ================= Client workspace administration =================
 internalRoutes.get("/internal/orgs", async (c) => {
-  await requireGrant(c, ["super_admin", "sales_admin"]);
+  await requireGrant(c, ["super_admin"]);
   const { db } = c.get("deps");
   const grants = await grantsFor(db, c.get("user")!.id);
   const r = await db.query(
@@ -673,7 +673,7 @@ internalRoutes.post("/internal/entitlements", async (c) => {
 });
 
 internalRoutes.post("/internal/demo/reset", async (c) => {
-  const { user } = await requireUnlock(c);
+  const { user } = await requireUnlock(c, ["super_admin"]);
   const { db, config, storage } = c.get("deps");
   const { resetDemoData } = await import("../seed/demo");
   await resetDemoData(db, { password: process.env.SEED_DEMO_PASSWORD || null, keepUsers: true, storage });
@@ -695,6 +695,9 @@ const onboardingSchema = z.object({
 internalRoutes.post("/orgs", async (c) => {
   const user = requireVerified(c);
   const { db } = c.get("deps");
+  // Sales team accounts are for research and sales only; creating workspaces is reserved for the owner.
+  const g = await grantsFor(db, user.id);
+  if (g.has("sales_admin") && !g.has("super_admin")) throw forbidden("Sales team accounts can’t create workspaces. Ask the Culturosity owner.");
   await rateLimit(db, `org-create:${user.id}`, 5, 86400);
   const parsed = onboardingSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) throw fromZod(parsed.error);
@@ -725,3 +728,78 @@ internalRoutes.post("/orgs", async (c) => {
 });
 
 export { forbidden };
+
+// ================= Sales team (super admins only) =================
+// Private sign-up links for salespeople. Email delivery is optional: the link is shown to the
+// super admin to copy and send, and is also queued for email when a provider is configured.
+const STAFF_INVITE_DAYS = 7;
+
+internalRoutes.get("/internal/team", async (c) => {
+  await requireUnlock(c, ["super_admin"]);
+  const { db } = c.get("deps");
+  const [team, invites] = await Promise.all([
+    db.query(
+      `select u.id, u.email, u.display_name, g.grant_name, g.created_at as granted_at,
+              (select max(s.last_seen_at) from sessions s where s.user_id = u.id) as last_seen_at
+         from platform_grants g join app_users u on u.id = g.user_id
+        where g.revoked_at is null order by g.grant_name desc, u.email`,
+    ),
+    db.query(
+      `select id, email, expires_at, created_at from staff_invitations
+        where accepted_at is null and revoked_at is null and expires_at > now() order by created_at desc`,
+    ),
+  ]);
+  return c.json({ team: team.rows, invitations: invites.rows });
+});
+
+internalRoutes.post("/internal/team/invitations", async (c) => {
+  const { user } = await requireUnlock(c, ["super_admin"]);
+  const { db, email: mailer, config } = c.get("deps");
+  await rateLimit(db, `staff-invite:${user.id}`, 50, 86400);
+  const parsed = emailSchema.safeParse(((await c.req.json().catch(() => ({}))) as { email?: string }).email);
+  if (!parsed.success) throw badRequest("Enter a valid email address.", { email: "Enter a valid email address" });
+  const email = parsed.data.toLowerCase();
+  const already = await db.query(
+    `select 1 from platform_grants g join app_users u on u.id = g.user_id where lower(u.email) = $1 and g.revoked_at is null`,
+    [email],
+  );
+  if (already.rows.length) throw conflict("This person already has admin access.");
+  const token = randomToken(32);
+  const expires = new Date(Date.now() + STAFF_INVITE_DAYS * 86_400_000);
+  await db.query(`update staff_invitations set revoked_at = now() where lower(email) = $1 and accepted_at is null and revoked_at is null`, [email]);
+  await db.query(`insert into staff_invitations (email, token_hash, invited_by, expires_at) values ($1,$2,$3,$4)`, [email, sha256(token), user.id, expires]);
+  const link = `${config.baseUrl}/auth/sales/${token}`;
+  await mailer
+    .send(db, {
+      to: email,
+      subject: "Join the Culturosity sales team",
+      text: `You've been invited to the Culturosity sales workspace (Research & Sales).\n\nCreate your account within ${STAFF_INVITE_DAYS} days:\n${link}\n\nIf you weren't expecting this, you can ignore this message.`,
+    })
+    .catch(() => {});
+  await audit(db, { actor: user.id, action: "staff.invited", meta: { email } });
+  // The link is returned once so the super admin can send it themselves; only its hash is stored.
+  return c.json({ ok: true, link, expiresAt: expires.toISOString(), emailed: mailer.configured }, 201);
+});
+
+internalRoutes.delete("/internal/team/invitations/:id", async (c) => {
+  const { user } = await requireUnlock(c, ["super_admin"]);
+  const { db } = c.get("deps");
+  await db.query(`update staff_invitations set revoked_at = now() where id = $1 and accepted_at is null`, [c.req.param("id")]);
+  await audit(db, { actor: user.id, action: "staff.invite_revoked", targetId: c.req.param("id") });
+  return c.json({ ok: true });
+});
+
+internalRoutes.post("/internal/team/:userId/remove", async (c) => {
+  const { user } = await requireUnlock(c, ["super_admin"]);
+  const { db } = c.get("deps");
+  const target = c.req.param("userId");
+  if (target === user.id) throw badRequest("You can't remove your own access.");
+  const r = await db.query(
+    `update platform_grants set revoked_at = now() where user_id = $1 and grant_name = 'sales_admin' and revoked_at is null returning id`,
+    [target],
+  );
+  if (!r.rows.length) throw badRequest("Only salespeople can be removed here. Super admin access can't be removed from the site.");
+  await db.query(`update admin_unlocks set revoked_at = now() where user_id = $1 and revoked_at is null`, [target]);
+  await audit(db, { actor: user.id, action: "staff.removed", targetType: "user", targetId: target });
+  return c.json({ ok: true });
+});

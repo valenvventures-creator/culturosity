@@ -559,3 +559,57 @@ describe("workspace lifecycle (Culturosity super admins only)", () => {
     expect((await sa.post("/orgs/culturosity/pause", { paused: true })).status).toBe(403);
   });
 });
+
+describe("sales team sign-up links", () => {
+  it("a super admin's private link creates a salesperson with research & sales access only", async () => {
+    const sa = client(app, "10.10.0.1");
+    await sa.signIn("super@demo.culturosity.test");
+    await sa.post("/internal/gate/unlock", { code: TEST_GATE_CODE });
+    const created = await sa.post("/internal/team/invitations", { email: "Riley.Sales@Example.com" });
+    expect(created.status).toBe(201);
+    const token = created.json.link.split("/auth/sales/")[1];
+    expect(token).toBeTruthy();
+    // Only the hash is stored.
+    expect((await ctx.db.query(`select 1 from staff_invitations where token_hash = $1`, [token])).rows).toHaveLength(0);
+
+    const rep = client(app, "10.10.0.2");
+    const info = await rep.get(`/staff-invitations/${token}`);
+    expect(info.json.invitation).toMatchObject({ email: "riley.sales@example.com", expired: false, accepted: false, hasAccount: false });
+    expect((await rep.post(`/staff-invitations/${token}/accept`, { displayName: "Riley Sales", password: "short" })).status).toBe(422);
+    const joined = await rep.post(`/staff-invitations/${token}/accept`, { displayName: "Riley Sales", password: "a-long-sales-password-1" });
+    expect(joined.status).toBe(200);
+    expect(joined.json.redirect).toBe("/culturosity/admin");
+    const me = (await rep.get("/me")).json;
+    expect(me.grants).toEqual(["sales_admin"]);
+    expect(me.user.email_verified_at).toBeTruthy();
+    // The link works once.
+    expect((await client(app, "10.10.0.3").post(`/staff-invitations/${token}/accept`, { displayName: "X", password: "another-long-password-2" })).status).toBe(400);
+
+    // Research & sales work, after the access code.
+    expect((await rep.get("/internal/research")).status).toBe(423);
+    await rep.post("/internal/gate/unlock", { code: TEST_GATE_CODE });
+    expect((await rep.get("/internal/research")).status).toBe(200);
+    expect((await rep.get("/internal/pipeline")).status).toBe(200);
+
+    // No owner-only rights: settings, access, team, workspaces, catalogue, demo reset, creating workspaces.
+    expect((await rep.post("/internal/gate/rotate", { currentCode: TEST_GATE_CODE, newCode: "9876543210" })).status).toBe(404);
+    expect((await rep.get("/internal/team")).status).toBe(404);
+    expect((await rep.post("/internal/team/invitations", { email: "friend@example.com" })).status).toBe(404);
+    expect((await rep.get("/internal/orgs")).status).toBe(404);
+    expect((await rep.post("/internal/demo/reset")).status).toBe(404);
+    expect((await rep.get("/orgs/northwind-demo/members")).status).toBe(404);
+    expect((await rep.get("/orgs/culturosity/members")).status).toBe(404);
+    expect((await rep.patch("/orgs/northwind-demo", { welcomeCopy: "changed" })).status).toBe(404);
+    expect((await rep.post("/orgs/northwind-demo/pause", { paused: true })).status).toBe(404);
+    expect((await rep.post("/orgs", { name: "Rep Co", contactName: "Riley", contactEmail: "riley.sales@example.com", deliveryPreference: "self_service" })).status).toBe(403);
+
+    // The super admin sees them on the team and can remove them; access ends immediately.
+    const team = (await sa.get("/internal/team")).json.team;
+    const riley = team.find((t: any) => t.email === "riley.sales@example.com");
+    expect(riley.grant_name).toBe("sales_admin");
+    const superRow = team.find((t: any) => t.grant_name === "super_admin");
+    expect((await sa.post(`/internal/team/${superRow.id}/remove`)).status).toBe(400); // super admins can't be removed here
+    expect((await sa.post(`/internal/team/${riley.id}/remove`)).status).toBe(200);
+    expect((await rep.get("/internal/research")).status).toBe(404);
+  });
+});

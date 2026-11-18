@@ -270,6 +270,58 @@ authRoutes.post("/me/deactivate", async (c) => {
 });
 
 // ---- Invitations ----
+// ---- Sales team sign-up links ----
+async function staffInvite(q: Queryable, token: string, lock = false) {
+  const r = await q.query<{ id: string; email: string; expires_at: string; accepted_at: string | null; revoked_at: string | null }>(
+    `select id, email, expires_at, accepted_at, revoked_at from staff_invitations where token_hash = $1${lock ? " for update" : ""}`,
+    [sha256(token)],
+  );
+  const inv = r.rows[0];
+  if (!inv || inv.revoked_at) throw notFound("This sign-up link is not valid. Ask Culturosity for a new one.");
+  return inv;
+}
+
+authRoutes.get("/staff-invitations/:token", async (c) => {
+  const { db } = c.get("deps");
+  const inv = await staffInvite(db, c.req.param("token"));
+  const exists = await db.query(`select 1 from app_users where lower(email) = lower($1)`, [inv.email]);
+  return c.json({
+    invitation: { email: inv.email, expired: new Date(inv.expires_at) < new Date(), accepted: Boolean(inv.accepted_at), hasAccount: exists.rows.length > 0 },
+  });
+});
+
+/** Create the salesperson's account (or connect an existing one with its password) and grant the sales role. */
+authRoutes.post("/staff-invitations/:token/accept", async (c) => {
+  const { db } = c.get("deps");
+  await rateLimit(db, `staff-accept:${sourceHash(c)}`, 20, 3600);
+  const b = (await c.req.json().catch(() => ({}))) as { displayName?: string; password?: string };
+  const userId = await db.tx(async (q) => {
+    const inv = await staffInvite(q, c.req.param("token"), true);
+    if (inv.accepted_at) throw badRequest("This sign-up link was already used. Sign in instead.");
+    if (new Date(inv.expires_at) < new Date()) throw badRequest("This sign-up link has expired. Ask Culturosity for a new one.");
+    const existing = await q.query<{ id: string }>(`select id from app_users where lower(email) = lower($1)`, [inv.email]);
+    let id: string;
+    if (existing.rows[0]) {
+      const ok = b.password ? await passwordAuth.verifyPassword(q, inv.email, b.password) : null;
+      if (!ok) throw badRequest("An account already exists for this email. Enter its password to continue.", { password: "Incorrect password" });
+      id = ok.id;
+    } else {
+      const parsed = signUpSchema.safeParse({ email: inv.email, password: b.password, displayName: b.displayName });
+      if (!parsed.success) throw fromZod(parsed.error);
+      // The private link was sent to this address, so it counts as verified.
+      id = await passwordAuth.createPasswordUser(q, { ...parsed.data, verified: true });
+    }
+    await q.query(`update app_users set email_verified_at = coalesce(email_verified_at, now()) where id = $1`, [id]);
+    const has = await q.query(`select 1 from platform_grants where user_id = $1 and grant_name = 'sales_admin' and revoked_at is null`, [id]);
+    if (!has.rows.length) await q.query(`insert into platform_grants (user_id, grant_name, granted_by) values ($1,'sales_admin',(select invited_by from staff_invitations where id = $2))`, [id, inv.id]);
+    await q.query(`update staff_invitations set accepted_at = now(), accepted_by = $2 where id = $1`, [inv.id, id]);
+    await audit(q, { actor: id, action: "staff.joined", meta: { email: inv.email } });
+    return id;
+  });
+  await createSession(c, userId);
+  return c.json({ ok: true, redirect: "/culturosity/admin" });
+});
+
 authRoutes.get("/invitations/:token", async (c) => {
   const r = await c.get("deps").db.query(
     `select i.email, i.role, i.expires_at, i.accepted_at, i.revoked_at, o.name as org_name, o.slug as org_slug

@@ -14,7 +14,7 @@ import {
   SubmitPerkPage,
 } from "./pages/public";
 import { PrivacyPage, TermsPage } from "./pages/legal";
-import { AccountPage, DevMailboxPage, ForgotPage, InvitePage, ResetPage, SignInPage, SignUpPage, StartWorkspacePage, VerifyPage } from "./pages/auth";
+import { AccountPage, DevMailboxPage, ForgotPage, InvitePage, ResetPage, SalesSignUpPage, SignInPage, SignUpPage, StartWorkspacePage, VerifyPage } from "./pages/auth";
 
 // Heavier admin areas are code-split.
 const org = () => import("./pages/org");
@@ -50,6 +50,7 @@ const DemoGuidePage = L(internal, "DemoGuidePage");
 const ServiceQueuePage = L(internal, "ServiceQueuePage");
 const WorkspacesPage = L(internal, "WorkspacesPage");
 const AccessSettingsPage = L(internal, "AccessSettingsPage");
+const SalesTeamPage = L(internal, "SalesTeamPage");
 const ProviderVerifyPage = L(provider, "ProviderVerifyPage");
 
 const S = (el: JSX.Element) => <Suspense fallback={<div className="container page"><Spinner /></div>}>{el}</Suspense>;
@@ -102,6 +103,7 @@ const router = createBrowserRouter(
       { path: "/auth/forgot", element: <ForgotPage /> },
       { path: "/auth/reset", element: <ResetPage /> },
       { path: "/auth/invite/:token", element: <InvitePage /> },
+      { path: "/auth/sales/:token", element: <SalesSignUpPage /> },
       { path: "/account", element: <AccountPage /> },
       { path: "/start", element: <StartWorkspacePage /> },
       { path: "/dev/mailbox", element: <DevMailboxPage /> },
@@ -149,6 +151,7 @@ const router = createBrowserRouter(
       { path: "services", element: S(<ServiceQueuePage />) },
       { path: "workspaces", element: S(<WorkspacesPage />) },
       { path: "settings", element: S(<AccessSettingsPage />) },
+      { path: "team", element: S(<SalesTeamPage />) },
     ],
   },
 ],
