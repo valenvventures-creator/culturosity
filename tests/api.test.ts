@@ -410,15 +410,16 @@ describe("content packs: Culturosity perk listings and details", () => {
     expect(log[0]).toContain("35 Culturosity perks added");
     expect(log[1]).toContain("3 Culturosity perks added");
     expect(log[2]).toContain("3 perks added, 37 perks given full details, 20 provider profiles updated");
+    expect(log[3]).toContain("4 perks removed, 1 providers with no remaining perks archived");
     expect(await applyContentPacks(ctx.db)).toEqual([]); // idempotent
 
     const rows = await ctx.db.query<{ title: string; details_pending: boolean; pos_reference: string | null; image_path: string }>(
       `select pk.title, pk.details_pending, pk.pos_reference, pk.image_path from perks pk join organizations o on o.id = pk.org_id
         where o.slug = 'culturosity' and not pk.is_demo`,
     );
-    expect(rows.rows).toHaveLength(41);
-    expect(rows.rows.filter((r) => r.details_pending).map((r) => r.title).sort()).toEqual(["BPM X WAG-Qaumajuq", "Gift Shop", "Happy Hour - Two Taps and a Snack", "Tosca"]);
-    expect(rows.rows.filter((r) => !r.details_pending).every((r) => r.pos_reference && r.image_path.startsWith("/perks/culturosity/"))).toBe(true);
+    expect(rows.rows).toHaveLength(37);
+    expect(rows.rows.every((r) => !r.details_pending && r.pos_reference && r.image_path.startsWith("/perks/culturosity/"))).toBe(true);
+    expect(rows.rows.map((r) => r.title)).not.toEqual(expect.arrayContaining(["Tosca"]));
     const titles = rows.rows.map((r) => r.title);
     expect(titles).toEqual(expect.arrayContaining(["Beethoven’s Violin Concerto & Sibelius’ Symphony No. 1", "Buy one subscription, bring a friend for free to Symphonic Sessions", "Membership", "La Belle Boutique Blanche", "Vocal Assessment"]));
     const providers = await ctx.db.query<{ n: number }>(`select count(*)::int as n from providers where name = 'Blufish Japanese Restaurant'`);
@@ -428,6 +429,7 @@ describe("content packs: Culturosity perk listings and details", () => {
     expect(pub.slice(0, 3).map((p: any) => p.title)).toEqual(["Membership", "La Belle Boutique Blanche", "Vocal Assessment"]); // newest first
     const labels = new Set(pub.map((p: any) => p.value_label));
     for (const l of ["Save 25%", "Free", "BOGO", "Exclusive", "Save $2", "Save $5", "Save $25", "Save $10"]) expect(labels.has(l)).toBe(true);
+    expect(pub.some((p: any) => ["Tosca", "Gift Shop", "BPM X WAG-Qaumajuq", "Happy Hour - Two Taps and a Snack"].includes(p.title))).toBe(false);
     const find = (t: string) => pub.find((p: any) => p.title === t);
 
     // Signed out: description, dates and provider contacts are public; codes, links and QR are not.
@@ -452,8 +454,16 @@ describe("content packs: Culturosity perk listings and details", () => {
     const click = await sa.post("/events", { event: "use_perk_click", programId: progId, perkId: madeHere.id });
     expect(click.json.redirect).toBe("https://madeheremb.com/collections/all");
 
-    // Perks without details yet still cannot be redeemed.
-    const tosca = find("Tosca");
-    expect((await sa.post("/redemption-tokens", { programId: progId, perkId: tosca.id })).status).toBe(409);
+    // A perk whose details are still pending cannot be redeemed.
+    await ctx.db.query(`update perks set details_pending = true where id = $1`, [madeHere.id]);
+    expect((await sa.post("/redemption-tokens", { programId: progId, perkId: madeHere.id })).status).toBe(409);
+    expect((await sa.post("/events", { event: "use_perk_click", programId: progId, perkId: madeHere.id })).status).toBe(409);
+    await ctx.db.query(`update perks set details_pending = false where id = $1`, [madeHere.id]);
+
+    // Removed perks are gone, including their Details pages.
+    const gone = await ctx.db.query<{ n: number }>(`select count(*)::int as n from perks where title in ('Tosca', 'BPM X WAG-Qaumajuq')`);
+    expect(gone.rows[0].n).toBe(0);
+    const nonsuch = await ctx.db.query<{ status: string }>(`select status from providers where name = 'Nonsuch Brewing Co.'`);
+    expect(nonsuch.rows[0].status).toBe("archived");
   });
 });

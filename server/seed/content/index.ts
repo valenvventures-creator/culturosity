@@ -146,6 +146,41 @@ async function applyPerkDetails(q: Queryable): Promise<string> {
   return `${added} perks added, ${updated} perks given full details, ${providers} provider profiles updated`;
 }
 
+/** Perks Culturosity confirmed should not be listed (no details, not current offers). */
+const REMOVED_PERKS: { provider: string; title: string }[] = [
+  { provider: "Canadian Fossil Discovery Centre", title: "Gift Shop" },
+  { provider: "Manitoba Opera", title: "Tosca" },
+  { provider: "Nonsuch Brewing Co.", title: "Happy Hour - Two Taps and a Snack" },
+  { provider: "WAG-Qaumajuq", title: "BPM X WAG-Qaumajuq" },
+];
+
+/** Pack 0004: delete those perks (and their saves/clicks via cascade); archive providers left with no perks. */
+async function removePerks(q: Queryable): Promise<string> {
+  const { org_id } = await culturosityProgram(q);
+  let removed = 0;
+  const providerIds = new Set<string>();
+  for (const r of REMOVED_PERKS) {
+    const res = await q.query<{ provider_id: string }>(
+      `delete from perks pk using providers pv
+        where pv.id = pk.provider_id and pk.org_id = $1 and lower(pv.name) = lower($2) and lower(pk.title) = lower($3)
+        returning pk.provider_id`,
+      [org_id, r.provider, r.title],
+    );
+    removed += res.rows.length;
+    for (const row of res.rows) providerIds.add(row.provider_id);
+  }
+  let archived = 0;
+  for (const id of providerIds) {
+    const a = await q.query(
+      `update providers set status = 'archived', updated_at = now()
+        where id = $1 and not exists (select 1 from perks where provider_id = $1)`,
+      [id],
+    );
+    archived += a.rowCount ?? 0;
+  }
+  return `${removed} perks removed, ${archived} providers with no remaining perks archived`;
+}
+
 const PACKS: Pack[] = [
   {
     name: "0001_culturosity_perks_listings",
@@ -156,6 +191,7 @@ const PACKS: Pack[] = [
     apply: async (q) => `${await addListings(q, CULTUROSITY_PERK_LISTINGS_MORE, 5)} Culturosity perks added (details pending)`,
   },
   { name: "0003_culturosity_perk_details", apply: applyPerkDetails },
+  { name: "0004_remove_unlisted_perks", apply: removePerks },
 ];
 
 export async function applyContentPacks(db: Db): Promise<string[]> {

@@ -26,7 +26,7 @@ Date: 2026-11-18.
 - `/perks/:id` follows the Culturosity app's Details screen: value pill joined to **Use Perk** (or **Show card** for in-person perks), large image, provider name, green offer card (title, description, promo code with copy), provider about, **Website / Email / Directions** rows, and the member card.
 - The member card shows **the perk's own QR code** (`perks.pos_reference`, editable as "Perk QR code for POS" in the offer form), rendered black-on-white for scanners. The one-time verification code is still available under "Provider asks for a verification code?".
 - Signed-out visitors see the description, dates and provider contacts; promo codes (also masked inside the text), Use Perk links and the QR code need a free sign-in.
-- Content pack `0003` (`server/seed/content/0003_culturosity_perk_details.ts`) holds the details transcribed from Culturosity's app screenshots for 37 perks, adds Musée Membership, La Belle Boutique Blanche and Crescendo Vocal Assessment, and corrects two titles. Fossil Centre Gift Shop, Tosca, Nonsuch happy hour and BPM X WAG-Qaumajuq stay "details coming soon".
+- Content pack `0003` (`server/seed/content/0003_culturosity_perk_details.ts`) holds the details transcribed from Culturosity's app screenshots for 37 perks, adds Musée Membership, La Belle Boutique Blanche and Crescendo Vocal Assessment, and corrects two titles. Content pack `0004` removes four listing-only perks Culturosity confirmed should not be listed (Fossil Centre Gift Shop, Tosca, Nonsuch happy hour, BPM X WAG-Qaumajuq).
 
 ## Tests run
 

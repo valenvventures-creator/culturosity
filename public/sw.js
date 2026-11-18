@@ -3,7 +3,7 @@
  * Never caches /api/* (catalogue data, promo codes, member credentials, admin research, redemption tokens).
  * Navigations fall back to the cached shell, then to /offline.html when offline.
  */
-const VERSION = "cul-shell-v3"; // bump whenever cached static images change
+const VERSION = "cul-shell-v4"; // bump whenever cached static images change
 const SHELL = ["/", "/offline.html", "/manifest.webmanifest", "/brand/culturosity-logo.webp", "/brand/culturosity-logo.png", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {
