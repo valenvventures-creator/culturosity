@@ -7,6 +7,7 @@ import { SERVICE_NEEDS } from "@shared/schemas";
 import { CatalogueView, PerkCard, type ListingPerk } from "../components/Catalogue";
 import { PerkDetailPage } from "../components/PerkDetail";
 import { PerkForm } from "../components/PerkForm";
+import { AppPromo } from "../components/AppPromo";
 import { DotField, EmptyState, ErrorAlert, Spinner, TextArea, TextField, SelectField, Checkbox, useDocumentTitle } from "../components/ui";
 import { IconArrow, IconBriefcase, IconChart, IconLock, IconSparkle, IconStore, IconTicket, IconUsers, IconCheck } from "../components/Icons";
 
@@ -17,9 +18,10 @@ export function HomePage() {
   return (
     <>
       <section className="hero">
-        <DotField density={26} />
+        <DotField density={26} edgeOnly />
         <div className="hero-glow" aria-hidden />
-        <div className="container hero-content">
+        <div className="container hero-content hero-grid">
+          <div>
           <div className="eyebrow">Culturosity</div>
           <h1 style={{ maxWidth: 820 }}>
             Better perks. <span style={{ color: "var(--brand-mint)" }}>Stronger connections.</span>
@@ -36,6 +38,8 @@ export function HomePage() {
               Book a Demo
             </Link>
           </div>
+          </div>
+          <AppPromo perks={(data?.perks ?? []).filter((p) => !p.is_demo).concat((data?.perks ?? []).filter((p) => p.is_demo))} />
         </div>
       </section>
 

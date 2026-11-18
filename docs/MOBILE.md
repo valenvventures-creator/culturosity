@@ -27,4 +27,4 @@
 - Permission strings (camera) and review notes with a demo account.
 - Device testing on current iOS/Android versions and small screens.
 
-No App Store or Google Play badges are shown in the product until real store links exist.
+Culturosity's existing native app is published on the [App Store](https://apps.apple.com/ca/app/culturosity/id6467152905) and [Google Play](https://play.google.com/store/apps/details?id=com.culturosity). The site links to it with Apple's and Google's official badges (`public/brand/stores/`, home hero and footer) and lists it in the web manifest's `related_applications`. The PWA/Capacitor notes above apply only if this web platform is later packaged as its own app.

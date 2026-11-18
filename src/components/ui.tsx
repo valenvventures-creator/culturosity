@@ -27,7 +27,7 @@ export function Logo({ height = 40, className }: { height?: number; className?: 
 }
 
 /** Logo-inspired floating dots. Purely decorative; disabled for reduced motion via CSS. */
-export function DotField({ density = 22, seed = 7, centered = false }: { density?: number; seed?: number; centered?: boolean }) {
+export function DotField({ density = 22, seed = 7, centered = false, edgeOnly = false }: { density?: number; seed?: number; centered?: boolean; edgeOnly?: boolean }) {
   let s = seed;
   const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
   const dots = Array.from({ length: density }, (_, i) => {
@@ -36,7 +36,7 @@ export function DotField({ density = 22, seed = 7, centered = false }: { density
     return { cx: rnd() * 100, cy: rnd() * 100, r: 0.4 + rnd() * 2.6, color, delay: -(rnd() * 9), op: 0.25 + rnd() * 0.55, i };
   });
   return (
-    <svg className={`dotfield ${centered ? "full-edge" : ""}`} viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden>
+    <svg className={`dotfield ${centered ? "full-edge" : ""} ${edgeOnly ? "edge-only" : ""}`} viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" aria-hidden>
       {dots.map((d) => (
         <circle key={d.i} cx={d.cx} cy={d.cy} r={d.r} fill={d.color} opacity={d.op} style={{ animationDelay: `${d.delay}s` }} />
       ))}

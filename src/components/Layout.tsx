@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Logo } from "./ui";
+import { StoreBadges } from "./AppPromo";
 import { useConfig, useMe, useSignOut, isInternal, type Me } from "../lib/session";
 import { IconHeart, IconMenu, IconClose, IconTicket, IconUser, IconBriefcase, IconLock } from "./Icons";
 
@@ -181,6 +182,7 @@ export function SiteFooter() {
           <div className="stack">
             <Logo height={44} />
             <p>Better perks. Stronger connections.</p>
+            <StoreBadges size="sm" />
           </div>
           <div>
             <div className="eyebrow" style={{ marginBottom: 10 }}>Platform</div>
