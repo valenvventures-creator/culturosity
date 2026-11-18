@@ -1747,7 +1747,7 @@ table.data tr.clickable {
 .kanban {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(240px, 1fr);
+  grid-auto-columns: minmax(205px, 1fr);
   gap: 12px;
   overflow-x: auto;
   padding-bottom: 8px;
@@ -1929,4 +1929,104 @@ table.data tr.clickable {
 }
 [tabindex="-1"]:focus:not(:focus-visible) {
   outline: none;
+}
+/* ---------- Pipeline drag and drop ---------- */
+.pipeline-tray {
+  background: #fff;
+  border: 1.5px dashed var(--line-light);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin: 14px 0 16px;
+}
+.tray-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.tray-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--brand-light);
+  border: 1px solid var(--line-light);
+  border-radius: 12px;
+  padding: 4px 6px 4px 10px;
+  cursor: grab;
+  font-size: 0.88rem;
+  min-height: 44px;
+}
+.tray-chip:hover,
+.kanban .card:hover {
+  border-color: #0a6b51;
+}
+.tray-chip:active,
+.kanban .card:active {
+  cursor: grabbing;
+}
+.grip {
+  color: #8a8a96;
+  user-select: none;
+}
+.stage-select {
+  font: inherit;
+  font-size: 0.8rem;
+  border: 1px solid var(--line-light);
+  border-radius: 8px;
+  padding: 4px 6px;
+  min-height: 34px;
+  background: #fff;
+  color: var(--ink);
+  max-width: 100%;
+}
+.kanban .card {
+  cursor: grab;
+  display: grid;
+  gap: 4px;
+  transition: transform var(--t-fast), box-shadow var(--t-fast), opacity var(--t-fast);
+}
+.kanban .card .stage-select {
+  margin-top: 4px;
+  width: 100%;
+}
+.dragging {
+  opacity: 0.45;
+}
+.kanban .col {
+  transition: background var(--t-fast), outline-color var(--t-fast);
+  outline: 2px dashed transparent;
+  outline-offset: -2px;
+}
+.kanban .col.drop-over {
+  background: var(--success-bg);
+  outline-color: #0a6b51;
+}
+.kanban .col-dnc h4 {
+  color: var(--danger);
+}
+.drop-hint {
+  margin-top: 8px;
+  border: 1.5px dashed #cfcfd8;
+  border-radius: 10px;
+  padding: 18px 8px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+.tray-chip .stage-select {
+  font-size: 0.75rem;
+  min-height: 30px;
+  padding: 2px 4px;
+  width: 92px;
+}
+.tray-chip .name {
+  padding: 8px 0;
+}
+.kanban .card {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.kanban .card > .spread {
+  flex-wrap: nowrap;
 }

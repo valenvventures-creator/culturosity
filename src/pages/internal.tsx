@@ -807,33 +807,198 @@ export function OutreachPage() {
 }
 
 // ======================= Pipeline =======================
+type Stage = (typeof PIPELINE_STAGES)[number];
+type DragItem = { kind: "prospect" | "record"; id: string; from: Stage | null; name: string };
+
+/**
+ * Drag-and-drop pipeline board. Drag a research record from the tray into any stage to add it,
+ * or drag a card between stages. Every card also has a stage picker, so the board works by
+ * keyboard, screen reader and touch (HTML drag-and-drop is mouse-only on most phones).
+ */
 export function PipelinePage() {
   useDocumentTitle("Pipeline");
+  const qc = useQueryClient();
+  const toast = useToast();
   const { data, isLoading, error } = useQuery<any>({ queryKey: ["internal", "pipeline"], queryFn: () => api.get("/internal/pipeline") });
+  const { data: records } = useQuery<any>({ queryKey: ["internal", "research", { pageSize: 200 }], queryFn: () => api.get("/internal/research?pageSize=200") });
+  const [filter, setFilter] = useState("");
+  const [dragging, setDragging] = useState<DragItem | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const [announce, setAnnounce] = useState("");
+
   const grouped = useMemo(() => {
     const m: Record<string, any[]> = {};
     for (const s of PIPELINE_STAGES) m[s] = [];
     for (const p of data?.prospects ?? []) m[p.stage]?.push(p);
     return m;
   }, [data]);
+  const inPipeline = useMemo(() => new Set((data?.prospects ?? []).map((p: any) => p.research_org_id)), [data]);
+  const tray = useMemo(
+    () =>
+      (records?.records ?? [])
+        .filter((r: any) => !inPipeline.has(r.id))
+        .filter((r: any) => !filter || r.display_name.toLowerCase().includes(filter.toLowerCase())),
+    [records, inPipeline, filter],
+  );
+
+  const move = useMutation({
+    mutationFn: ({ item, to, clearDnc }: { item: DragItem; to: Stage; clearDnc?: boolean }) =>
+      api.put(`/internal/prospects/${item.id}`, { stage: to, ...(clearDnc ? { doNotContact: false } : {}) }),
+    onMutate: async ({ item, to }) => {
+      // Optimistic: show the card in its new column immediately.
+      await qc.cancelQueries({ queryKey: ["internal", "pipeline"] });
+      const prev = qc.getQueryData<any>(["internal", "pipeline"]);
+      if (prev) {
+        const exists = prev.prospects.some((p: any) => p.research_org_id === item.id);
+        const prospects = exists
+          ? prev.prospects.map((p: any) => (p.research_org_id === item.id ? { ...p, stage: to } : p))
+          : [...prev.prospects, { id: `tmp-${item.id}`, research_org_id: item.id, display_name: item.name, stage: to }];
+        qc.setQueryData(["internal", "pipeline"], { ...prev, prospects });
+      }
+      return { prev };
+    },
+    onError: (e: any, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["internal", "pipeline"], ctx.prev);
+      toast(e.message, "error");
+    },
+    onSuccess: (_r, { item, to }) => {
+      const msg = item.from ? `Moved ${item.name} to ${PIPELINE_LABELS[to]}` : `Added ${item.name} to ${PIPELINE_LABELS[to]}`;
+      setAnnounce(msg);
+      toast(msg);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["internal", "pipeline"] });
+      qc.invalidateQueries({ queryKey: ["internal", "research"] });
+      qc.invalidateQueries({ queryKey: ["internal", "overview"] });
+    },
+  });
+
+  function moveTo(item: DragItem, to: Stage) {
+    if (item.from === to) return;
+    if (to === "do_not_contact" && !confirm(`Mark ${item.name} as Do Not Contact? Outreach drafting will be disabled for this organization.`)) return;
+    let clearDnc = false;
+    if (item.from === "do_not_contact") {
+      if (!confirm(`Remove the Do Not Contact status from ${item.name}? Only do this if you have a valid reason to contact them again.`)) return;
+      clearDnc = true;
+    }
+    move.mutate({ item, to, clearDnc });
+  }
+
+  const dragProps = (item: DragItem) => ({
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", item.id);
+      setDragging(item);
+    },
+    onDragEnd: () => {
+      setDragging(null);
+      setOver(null);
+    },
+  });
+  const dropProps = (stage: Stage) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!dragging) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (over !== stage) setOver(stage);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) setOver(null);
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      setOver(null);
+      if (dragging) moveTo(dragging, stage);
+      setDragging(null);
+    },
+  });
+
   return (
     <Wrap>
-      <PageHeader title="Pipeline" eyebrow="Admin Research & Sales" />
-      <p className="muted">Generating a draft never moves a prospect. Stages change when you update them or log a real contact activity.</p>
+      <PageHeader title="Pipeline" eyebrow="Admin Research & Sales">
+        <Link className="btn btn-ghost" to={`${B}/research`}>Add a research record</Link>
+      </PageHeader>
+      <p className="muted">
+        Drag a record from the tray into a stage to add it, or drag cards between stages. You can also use each card's stage menu. Generating an outreach
+        draft never moves a prospect.
+      </p>
+      <div className="sr-only" aria-live="polite">{announce}</div>
       {error ? <ErrorAlert error={error} /> : null}
       {isLoading ? <Spinner /> : null}
-      <div className="kanban">
+
+      <section className="pipeline-tray" aria-labelledby="tray-title">
+        <div className="spread" style={{ marginBottom: 10 }}>
+          <h2 id="tray-title" style={{ fontSize: "1rem", margin: 0 }}>
+            Not in pipeline yet <span className="muted">({tray.length})</span>
+          </h2>
+          <label className="sr-only" htmlFor="tray-filter">Filter records</label>
+          <input id="tray-filter" className="input" style={{ maxWidth: 260, minHeight: 40 }} placeholder="Filter records" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        </div>
+        {tray.length ? (
+          <div className="tray-items">
+            {tray.map((r: any) => {
+              const item: DragItem = { kind: "record", id: r.id, from: null, name: r.display_name };
+              return (
+                <div key={r.id} className={`tray-chip ${dragging?.id === r.id ? "dragging" : ""}`} {...dragProps(item)}>
+                  <span className="grip" aria-hidden>⠿</span>
+                  <span className="name">{r.display_name}</span>
+                  <label className="sr-only" htmlFor={`add-${r.id}`}>Add {r.display_name} to stage</label>
+                  <select
+                    id={`add-${r.id}`}
+                    className="stage-select"
+                    value=""
+                    onChange={(e) => e.target.value && moveTo(item, e.target.value as Stage)}
+                  >
+                    <option value="">Add to…</option>
+                    {PIPELINE_STAGES.map((s) => <option key={s} value={s}>{PIPELINE_LABELS[s]}</option>)}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="muted" style={{ margin: 0 }}>
+            {filter ? "No records match." : "Every research record is already in the pipeline."} <Link to={`${B}/research`}>Add a new research record</Link>.
+          </p>
+        )}
+      </section>
+
+      <div
+        className="kanban"
+        role="list"
+        aria-label="Pipeline stages"
+        onDragOver={(e) => {
+          // Auto-scroll the board when dragging near its edges so off-screen stages are reachable.
+          if (!dragging) return;
+          const el = e.currentTarget;
+          const r = el.getBoundingClientRect();
+          if (e.clientX > r.right - 70) el.scrollLeft += 18;
+          else if (e.clientX < r.left + 70) el.scrollLeft -= 18;
+        }}
+      >
         {PIPELINE_STAGES.map((s) => (
-          <div key={s} className="col">
+          <div key={s} role="listitem" className={`col ${over === s ? "drop-over" : ""} ${s === "do_not_contact" ? "col-dnc" : ""}`} {...dropProps(s)} aria-label={`${PIPELINE_LABELS[s]}, ${grouped[s].length} prospects`}>
             <h4><span>{PIPELINE_LABELS[s]}</span><span>{grouped[s].length}</span></h4>
-            {grouped[s].map((p) => (
-              <Link key={p.id} to={`${B}/research?open=${p.research_org_id}`} className="card" style={{ display: "block", color: "inherit", textDecoration: "none" }}>
-                <strong>{p.display_name}</strong>
-                {p.next_action ? <div className="muted">Next: {p.next_action}</div> : null}
-                {p.due_date ? <div className="muted">Due {new Date(p.due_date).toLocaleDateString()}</div> : null}
-                {p.owner_email ? <div className="muted">Owner: {p.owner_email}</div> : null}
-              </Link>
-            ))}
+            {grouped[s].map((p) => {
+              const item: DragItem = { kind: "prospect", id: p.research_org_id, from: s, name: p.display_name };
+              return (
+                <div key={p.id} className={`card ${dragging?.id === p.research_org_id ? "dragging" : ""}`} {...dragProps(item)}>
+                  <div className="spread" style={{ alignItems: "flex-start", gap: 6 }}>
+                    <Link to={`${B}/research?open=${p.research_org_id}`} style={{ fontWeight: 700, color: "inherit" }}>{p.display_name}</Link>
+                    <span className="grip" aria-hidden>⠿</span>
+                  </div>
+                  {p.next_action ? <div className="muted">Next: {p.next_action}</div> : null}
+                  {p.due_date ? <div className="muted">Due {new Date(p.due_date).toLocaleDateString()}</div> : null}
+                  {p.owner_email ? <div className="muted">Owner: {p.owner_email}</div> : null}
+                  <label className="sr-only" htmlFor={`move-${p.id}`}>Move {p.display_name} to stage</label>
+                  <select id={`move-${p.id}`} className="stage-select" value={s} onChange={(e) => moveTo(item, e.target.value as Stage)}>
+                    {PIPELINE_STAGES.map((x) => <option key={x} value={x}>{PIPELINE_LABELS[x]}</option>)}
+                  </select>
+                </div>
+              );
+            })}
+            {!grouped[s].length ? <div className="drop-hint">{dragging ? "Drop here" : "Empty"}</div> : null}
           </div>
         ))}
       </div>

@@ -326,6 +326,29 @@ describe("8/9. research directory and outreach", () => {
   });
 });
 
+describe("pipeline board", () => {
+  it("adds a record to a stage, moves it, and only clears Do Not Contact explicitly", async () => {
+    const sa = client(app, "10.6.0.1");
+    await sa.signIn("super@demo.culturosity.test");
+    await sa.post("/internal/gate/unlock", { code: TEST_GATE_CODE });
+    const rec = (await sa.get("/internal/research?q=Abenity")).json.records[0];
+    expect(rec.in_pipeline).toBe(false);
+    expect((await sa.put(`/internal/prospects/${rec.id}`, { stage: "qualified" })).status).toBe(200);
+    let p = (await sa.get("/internal/pipeline")).json.prospects.find((x: any) => x.research_org_id === rec.id);
+    expect(p.stage).toBe("qualified");
+    expect((await sa.get("/internal/research?q=Abenity")).json.records[0].in_pipeline).toBe(true);
+    await sa.put(`/internal/prospects/${rec.id}`, { stage: "do_not_contact" });
+    await sa.put(`/internal/prospects/${rec.id}`, { stage: "contact_planned" }); // no explicit clear
+    p = (await sa.get("/internal/pipeline")).json.prospects.find((x: any) => x.research_org_id === rec.id);
+    expect(p.do_not_contact).toBe(true);
+    await sa.put(`/internal/prospects/${rec.id}`, { stage: "contact_planned", doNotContact: false });
+    p = (await sa.get("/internal/pipeline")).json.prospects.find((x: any) => x.research_org_id === rec.id);
+    expect(p.do_not_contact).toBe(false);
+    const changes = (await sa.get(`/internal/research/${rec.id}`)).json.activities.filter((a: any) => a.kind === "stage_change");
+    expect(changes.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
 describe("10. managed-service requests", () => {
   it("public request is saved and appears in the internal queue", async () => {
     const r = await client(app, "10.3.0.1").post("/service-requests", {

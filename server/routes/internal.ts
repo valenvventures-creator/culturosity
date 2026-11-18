@@ -123,7 +123,7 @@ internalRoutes.get("/internal/research", async (c) => {
   const size = Math.min(200, Math.max(10, Number(c.req.query("pageSize") || 100)));
   const r = await db.query<any>(
     `select r.id, r.display_name, r.aliases, r.primary_domain, r.country, r.region, r.industry, r.prospect_types, r.verification_status,
-            r.last_checked_at, r.research_focus, coalesce(pr.stage, 'researching') as stage, pr.do_not_contact, pr.next_action, pr.due_date,
+            r.last_checked_at, r.research_focus, coalesce(pr.stage, 'researching') as stage, (pr.id is not null) as in_pipeline, pr.do_not_contact, pr.next_action, pr.due_date,
             (select json_agg(json_build_object('id', p.id, 'name', p.name, 'program_url', p.program_url, 'operator', op.display_name) order by p.name)
                from research_programs p left join research_organizations op on op.id = p.operator_org_id where p.organization_id = r.id) as programs,
             (select count(*)::int from research_sources s where s.organization_id = r.id) as source_count,
