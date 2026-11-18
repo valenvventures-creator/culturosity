@@ -62,13 +62,11 @@ export async function requireOrgRole(c: Ctx, slug: string, roles: OrgRole[]) {
   const org = await orgBySlug(db, slug);
   if (!org) throw notFound("Workspace not found.");
   const m = await activeMembership(db, user.id, org.id);
-  if (m && roles.includes(m.role)) {
-    // A paused workspace stays manageable by its owners and admins only.
-    if (org.status === "suspended" && m.role !== "owner" && m.role !== "admin")
-      throw new AppError(423, "workspace_paused", "This workspace is paused. Its perks will be available again when the owner resumes it.");
-    return { user, org, membership: m, elevated: false as const };
-  }
   const grants = await grantsFor(db, user.id);
+  // A paused workspace is closed to everyone in it (owners included) until a Culturosity super admin resumes it.
+  if (org.status === "suspended" && !grants.has("super_admin") && (m || (grants.has("sales_admin") && org.is_demo)))
+    throw new AppError(423, "workspace_paused", "This workspace is paused by Culturosity. Contact Culturosity to restore access.");
+  if (m && roles.includes(m.role)) return { user, org, membership: m, elevated: false as const };
   if (grants.has("super_admin")) return { user, org, membership: m, elevated: true as const };
   if (grants.has("sales_admin") && org.is_demo) return { user, org, membership: m, elevated: true as const };
   if (m) throw forbidden("Your role in this workspace does not allow that.");

@@ -1154,11 +1154,14 @@ export function WorkspacesPage() {
       {data ? (
         <div className="table-wrap">
           <table className="data">
-            <thead><tr><th>Workspace</th><th>Members</th><th>Live offers</th><th>Delivery</th><th>Licensed Culturosity programs</th><th /></tr></thead>
+            <thead><tr><th>Workspace</th><th>Status</th><th>Members</th><th>Live offers</th><th>Delivery</th><th>Licensed Culturosity programs</th><th /></tr></thead>
             <tbody>
               {data.orgs.map((o: any) => (
                 <tr key={o.id}>
                   <td><strong>{o.name}</strong> {o.is_demo ? <span className="badge badge-demo">Demo</span> : null}<div className="muted" style={{ fontSize: ".8rem" }}>{o.kind}</div></td>
+                  <td>
+                    <span className={`badge ${o.status === "suspended" ? "badge-paused" : "badge-mint"}`}>{o.status === "suspended" ? "Paused" : o.status === "active" ? "Active" : o.status}</span>
+                  </td>
                   <td>{o.members}</td>
                   <td>{o.offers}</td>
                   <td>{o.delivery_preference?.replace("_", " ") ?? "—"}</td>
@@ -1187,7 +1190,34 @@ export function WorkspacesPage() {
                         })
                       : "—"}
                   </td>
-                  <td><Link className="btn btn-ghost btn-sm" to={`/app/${o.slug}/manage`}>Open</Link></td>
+                  <td>
+                    <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                      <Link className="btn btn-ghost btn-sm" to={`/app/${o.slug}/manage`}>Open</Link>
+                      {o.kind === "client" && superAdmin ? (
+                        <>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={async () => {
+                              const pause = o.status !== "suspended";
+                              if (pause && !confirm(`Pause ${o.name}? Everyone in it, including its owner, loses access until you resume it.`)) return;
+                              try {
+                                await api.post(`/orgs/${o.slug}/pause`, { paused: pause });
+                                qc.invalidateQueries({ queryKey: ["internal", "orgs"] });
+                                toast(pause ? `${o.name} paused` : `${o.name} resumed`);
+                              } catch (e: any) {
+                                toast(e.message, "error");
+                              }
+                            }}
+                          >
+                            {o.status === "suspended" ? "Resume" : "Pause"}
+                          </button>
+                          <Link className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} to={`/app/${o.slug}/manage/settings`}>
+                            Delete…
+                          </Link>
+                        </>
+                      ) : null}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

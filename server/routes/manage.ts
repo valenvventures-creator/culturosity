@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv, Ctx } from "../context";
-import { requireOrgRole, type OrgRole } from "../lib/authz";
+import { orgBySlug, requireGrant, requireOrgRole, type OrgRole } from "../lib/authz";
 import { badRequest, forbidden, fromZod, notFound, conflict } from "../lib/errors";
 import { audit, rateLimit } from "../lib/security";
 import { passwordAuth } from "../lib/auth";
@@ -677,15 +677,17 @@ export function contrastOnBlack(hex: string) {
   return (relLum(hex) + 0.05) / 0.05;
 }
 
-// ---- Owner-only workspace lifecycle: pause / resume / delete ----
-async function requireOwner(c: Ctx) {
-  const ctx = await requireOrgRole(c, c.req.param("slug")!, ["owner"]);
-  if (ctx.org.kind !== "client") throw forbidden("The Culturosity workspace cannot be paused or deleted.");
-  return ctx;
+// ---- Workspace lifecycle: pause / resume / delete — Culturosity super admins only ----
+async function requireSuperAdminForOrg(c: Ctx) {
+  const { user } = await requireGrant(c, ["super_admin"]); // anyone else gets 404
+  const org = await orgBySlug(c.get("deps").db, c.req.param("slug")!);
+  if (!org) throw notFound("Workspace not found.");
+  if (org.kind !== "client") throw forbidden("The Culturosity workspace cannot be paused or deleted.");
+  return { user, org };
 }
 
 manageRoutes.post("/orgs/:slug/pause", async (c) => {
-  const { org, user } = await requireOwner(c);
+  const { org, user } = await requireSuperAdminForOrg(c);
   const { paused } = (await c.req.json().catch(() => ({}))) as { paused?: boolean };
   if (typeof paused !== "boolean") throw badRequest("Say whether to pause or resume the workspace.");
   const { db } = c.get("deps");
@@ -695,7 +697,7 @@ manageRoutes.post("/orgs/:slug/pause", async (c) => {
 });
 
 manageRoutes.post("/orgs/:slug/delete", async (c) => {
-  const { org, user } = await requireOwner(c);
+  const { org, user } = await requireSuperAdminForOrg(c);
   const { db, storage } = c.get("deps");
   await rateLimit(db, `org-delete:${user.id}`, 5, 3600);
   const b = (await c.req.json().catch(() => ({}))) as { confirmName?: string; password?: string };

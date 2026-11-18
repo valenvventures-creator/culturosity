@@ -31,8 +31,8 @@ export function OrgPortalPage() {
     <div className="container page">
       {org.status === "suspended" ? (
         <div className="alert alert-warning" role="status" style={{ marginBottom: 16 }}>
-          This workspace is paused, so members can’t see its perks right now.{" "}
-          {data.role === "owner" || data.elevated ? <Link to={`/app/${orgSlug}/manage/settings`}>Resume it</Link> : "The owner can resume it."}
+          This workspace is paused, so nobody in it can see its perks right now.{" "}
+          <Link to={`/app/${orgSlug}/manage/settings`}>Resume it</Link>
         </div>
       ) : null}
       <section className="org-hero">
@@ -90,6 +90,8 @@ export function OrgSubmitPage() {
 export function ManageLayout() {
   const { orgSlug = "" } = useParams();
   const { data, isLoading, error } = useOrg(orgSlug);
+  const { data: me } = useMe();
+  const superAdmin = Boolean(me?.grants?.includes("super_admin"));
   if (isLoading) return <div className="container page"><Spinner /></div>;
   if (error || !data) return <div className="container page"><ErrorAlert error={error} title="You don't have access to manage this workspace." /></div>;
   const role = data.role as string;
@@ -106,7 +108,7 @@ export function ManageLayout() {
       { title: "Insights", items: [{ to: `${b}/reports`, label: "Reports" }] },
       { title: "Workspace", items: [{ to: `${b}/branding`, label: "Branding" }, { to: `${b}/launch`, label: "Launch materials" }, { to: `${b}/services`, label: "Management Services" }] },
     );
-    if ((role === "owner" || data.elevated) && data.org.kind === "client") sections[sections.length - 1].items.push({ to: `${b}/settings`, label: "Pause or delete" });
+    if (superAdmin && data.org.kind === "client") sections[sections.length - 1].items.push({ to: `${b}/settings`, label: "Pause or delete" });
   } else {
     sections[0].items.push({ to: `${b}/providers`, label: "My providers" }, { to: "/provider/verify", label: "Verify redemptions" });
   }
@@ -1110,23 +1112,24 @@ export function ManageWorkspaceSettings() {
   const toast = useToast();
   const nav = useNavigate();
   const { data } = useOrg(orgSlug);
+  const { data: me } = useMe();
   const [busy, setBusy] = useState(false);
   const [confirmName, setConfirmName] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   if (!data) return <Wrap><Spinner /></Wrap>;
   const org = data.org;
-  if (!(data.role === "owner" || data.elevated) || org.kind !== "client")
+  if (!me?.grants?.includes("super_admin") || org.kind !== "client")
     return (
       <Wrap>
         <PageHeader title="Pause or delete" eyebrow="Workspace" />
-        <div className="alert alert-info">Only the workspace owner can pause or delete this workspace.</div>
+        <div className="alert alert-info">Only Culturosity super admins can pause or delete a workspace.</div>
       </Wrap>
     );
   const paused = org.status === "suspended";
 
   async function setPaused(next: boolean) {
-    if (next && !confirm(`Pause ${org.name}? Members will lose access to its perks until you resume it.`)) return;
+    if (next && !confirm(`Pause ${org.name}? Everyone in this workspace, including its owner and admins, will lose access until you resume it.`)) return;
     setBusy(true);
     try {
       await api.post(`/orgs/${orgSlug}/pause`, { paused: next });
@@ -1148,7 +1151,7 @@ export function ManageWorkspaceSettings() {
       qc.removeQueries({ queryKey: ["org", orgSlug] });
       await qc.invalidateQueries({ queryKey: ["me"] });
       toast(`${org.name} was deleted`);
-      nav("/perks", { replace: true });
+      nav("/culturosity/admin/workspaces", { replace: true });
     } catch (x) {
       setErrors((x as ApiError).fields ?? {});
       toast((x as Error).message, "error");
@@ -1173,8 +1176,8 @@ export function ManageWorkspaceSettings() {
             </button>
           </div>
           <ul className="muted" style={{ margin: "14px 0 0", paddingLeft: 18, lineHeight: 1.7 }}>
-            <li>While paused, members, provider managers and invitees can’t open the workspace or use its perks.</li>
-            <li>Owners and admins can still sign in here to manage it.</li>
+            <li>While paused, nobody in this workspace — owner, admins, provider managers or members — can open it or use its perks. They see “This workspace is paused by Culturosity.”</li>
+            <li>Only Culturosity super admins can open, resume or delete it.</li>
             <li>Nothing is deleted — resume at any time and everything is back as it was.</li>
           </ul>
         </section>

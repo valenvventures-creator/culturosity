@@ -167,8 +167,7 @@ authRoutes.get("/me", async (c) => {
     db.query(
       `select m.id, m.role, m.status, o.id as org_id, o.slug as org_slug, o.name as org_name, o.kind as org_kind, o.is_demo,
               o.program_display_name, o.accent_color, o.logo_asset_id, o.status as org_status
-         from memberships m join organizations o on o.id = m.org_id
-              and (o.status = 'active' or (o.status = 'suspended' and m.role in ('owner','admin')))
+         from memberships m join organizations o on o.id = m.org_id and o.status = 'active'
         where m.user_id = $1 and m.status = 'active' order by (o.kind = 'culturosity') desc, o.name`,
       [user.id],
     ),

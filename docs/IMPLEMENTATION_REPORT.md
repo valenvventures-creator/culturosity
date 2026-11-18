@@ -28,11 +28,11 @@ Date: 2026-11-18.
 - Signed-out visitors see the description, dates and provider contacts; promo codes (also masked inside the text), Use Perk links and the QR code need a free sign-in.
 - Content pack `0003` (`server/seed/content/0003_culturosity_perk_details.ts`) holds the details transcribed from Culturosity's app screenshots for 37 perks, adds Musée Membership, La Belle Boutique Blanche and Crescendo Vocal Assessment, and corrects two titles. Content pack `0004` removes four listing-only perks Culturosity confirmed should not be listed (Fossil Centre Gift Shop, Tosca, Nonsuch happy hour, BPM X WAG-Qaumajuq).
 
-### Workspace pause / delete (owners)
+### Workspace pause / delete (Culturosity super admins only)
 
-- **Manage → Workspace → Pause or delete** (owners of client workspaces; super admins too).
-- **Pause** sets the workspace to `suspended`: members, provider managers and invitees get "This workspace is paused"; owners and admins can still manage it and resume it. Nothing is removed.
-- **Delete** requires typing the workspace name and the owner's password. It permanently removes the workspace with its programs, offers, providers, memberships, invitations, uploads and reports; user accounts are kept. The deletion is recorded in the audit log. The Culturosity workspace can't be paused or deleted.
+- Available only to super admins: **Admin → Workspaces** (Pause / Resume / Delete… per client) and **Manage → Workspace → Pause or delete** inside any client workspace. Company owners, admins and members don't see these controls; the API returns 404 to them.
+- **Pause** sets the workspace to `suspended`: everyone in it — owner, admins, provider managers, members — gets "This workspace is paused by Culturosity". Nothing is removed; **Resume** restores access.
+- **Delete** requires typing the workspace name and the super admin's own password. It permanently removes the workspace with its programs, offers, providers, memberships, invitations, uploads and reports; user accounts are kept. Recorded in the audit log. The Culturosity workspace itself can't be paused or deleted.
 
 ## Tests run
 
