@@ -91,8 +91,14 @@ export async function sessionMiddleware(c: Ctx, next: Next) {
     const origin = c.req.header("origin");
     if (origin) {
       const host = c.req.header("x-forwarded-host") || c.req.header("host");
-      const allowed = new URL(c.get("deps").config.baseUrl).host;
-      const oh = new URL(origin).host;
+      let allowed = "";
+      let oh = "";
+      try {
+        allowed = new URL(c.get("deps").config.baseUrl).host;
+        oh = new URL(origin).host;
+      } catch {
+        throw new AppError(403, "csrf", "Request blocked: invalid origin.");
+      }
       if (oh !== host && oh !== allowed) throw new AppError(403, "csrf", "Request blocked: cross-origin.");
     }
   }
