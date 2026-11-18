@@ -36,6 +36,9 @@ function dbProblem(err: unknown): AppError | null {
   if (["ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT", "EAI_AGAIN", "ECONNRESET"].includes(code))
     return new AppError(503, "database_unreachable", `The database could not be reached (${code}).`);
   if (/CERT|SELF_SIGNED|TLS/i.test(code)) return new AppError(503, "database_tls_failed", `TLS to the database failed (${code}).`);
+  if (code === "25006")
+    return new AppError(503, "database_read_only", "The database connection is read-only. Use a connection string for a read-write role/compute (Neon: the primary branch, owner role).");
+  if (code === "42501") return new AppError(503, "database_permission_denied", "The database role lacks permission for this operation. Use the database owner role in the connection string.");
   return null;
 }
 
@@ -104,7 +107,11 @@ export function createApp(depsOrFactory: Deps | (() => Promise<Deps>)) {
       console.error(`[api] ${requestId}`, err);
       e = new AppError(500, "server_error", "Something went wrong on our side. Please try again.");
     }
-    return c.json({ error: { code: e.code, message: e.message, fields: e.fields, requestId } }, e.status as any);
+    // Safe diagnostic: a SQLSTATE / system error code or the error class name — never messages or data.
+    const raw = String((err as any)?.code ?? "");
+    const diagnostic =
+      e.status >= 500 ? (/^[0-9A-Z]{5}$/.test(raw) || /^E[A-Z_]+$/.test(raw) ? raw : (err as Error)?.name && (err as Error).name !== "Error" ? (err as Error).name : undefined) : undefined;
+    return c.json({ error: { code: e.code, message: e.message, fields: e.fields, requestId, diagnostic } }, e.status as any);
   });
   return app;
 }
