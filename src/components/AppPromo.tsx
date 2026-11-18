@@ -28,7 +28,13 @@ function PhoneMockup({ perks }: { perks: ListingPerk[] }) {
           <span className="phone-island" />
           <span className="phone-icons">●●● ▮</span>
         </div>
-        <div className="phone-title">PERKS</div>
+        <div className="phone-title">
+          <picture>
+            <source srcSet="/brand/culturosity-logo.webp" type="image/webp" />
+            <img className="phone-logo" src="/brand/culturosity-logo.png" alt="" />
+          </picture>
+          PERKS
+        </div>
         <div className="phone-tabs">
           <span>♥</span>
           <span className="on">New</span>
