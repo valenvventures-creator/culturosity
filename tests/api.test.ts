@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { setup, client, samplePerk, TEST_GATE_CODE, type App } from "./helpers";
+import { setup, client, samplePerk, TEST_GATE_CODE, PASSWORD, type App } from "./helpers";
 
 let app: App;
 let ctx: Awaited<ReturnType<typeof setup>>;
@@ -465,5 +465,48 @@ describe("content packs: Culturosity perk listings and details", () => {
     expect(gone.rows[0].n).toBe(0);
     const nonsuch = await ctx.db.query<{ status: string }>(`select status from providers where name = 'Nonsuch Brewing Co.'`);
     expect(nonsuch.rows[0].status).toBe("archived");
+  });
+});
+
+describe("workspace lifecycle (owner only)", () => {
+  it("pauses and resumes a workspace, then deletes it permanently", async () => {
+    const owner = client(app, "10.9.0.1");
+    await owner.signIn("admin@harbour.example");
+    const member = client(app, "10.9.0.2");
+    await member.signIn("member@harbour.example");
+    expect((await member.get("/orgs/harbour-demo")).status).toBe(200);
+
+    // Members can't pause or delete.
+    expect((await member.post("/orgs/harbour-demo/pause", { paused: true })).status).toBe(403);
+    expect((await member.post("/orgs/harbour-demo/delete", { confirmName: "Harbour Demo Union", password: "x" })).status).toBe(403);
+
+    // Pause: members lose access; the owner can still manage and sees it as paused.
+    expect((await owner.post("/orgs/harbour-demo/pause", { paused: true })).json.status).toBe("suspended");
+    expect((await member.get("/orgs/harbour-demo")).status).toBe(423);
+    expect((await member.get("/me")).json.programs.some((p: any) => p.org_slug === "harbour-demo")).toBe(false);
+    expect((await owner.get("/orgs/harbour-demo")).json.org.status).toBe("suspended");
+    expect((await owner.get("/me")).json.memberships.find((m: any) => m.org_slug === "harbour-demo").org_status).toBe("suspended");
+
+    // Resume: access is back.
+    await owner.post("/orgs/harbour-demo/pause", { paused: false });
+    expect((await member.get("/orgs/harbour-demo")).status).toBe(200);
+
+    // Delete needs the exact name and the owner's password.
+    const wrongName = await owner.post("/orgs/harbour-demo/delete", { confirmName: "harbour", password: PASSWORD });
+    expect(wrongName.status).toBe(400);
+    const wrongPw = await owner.post("/orgs/harbour-demo/delete", { confirmName: "Harbour Demo Union", password: "wrong-password" });
+    expect(wrongPw.status).toBe(400);
+    expect(wrongPw.json.error.fields.password).toBeTruthy();
+    expect((await owner.post("/orgs/harbour-demo/delete", { confirmName: "Harbour Demo Union", password: PASSWORD })).status).toBe(200);
+
+    expect((await ctx.db.query(`select 1 from organizations where slug = 'harbour-demo'`)).rows).toHaveLength(0);
+    expect((await ctx.db.query(`select 1 from app_users where email = 'member@harbour.example'`)).rows).toHaveLength(1); // accounts are kept
+    expect((await member.get("/orgs/harbour-demo")).status).toBe(404);
+    expect((await owner.get("/me")).json.memberships.some((m: any) => m.org_slug === "harbour-demo")).toBe(false);
+
+    // The Culturosity workspace itself can never be paused or deleted.
+    const sa = client(app, "10.9.0.3");
+    await sa.signIn("super@demo.culturosity.test");
+    expect((await sa.post("/orgs/culturosity/pause", { paused: true })).status).toBe(403);
   });
 });

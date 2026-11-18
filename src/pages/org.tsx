@@ -29,6 +29,12 @@ export function OrgPortalPage() {
   const isMember = (me?.programs ?? []).some((p) => p.org_slug === orgSlug);
   return (
     <div className="container page">
+      {org.status === "suspended" ? (
+        <div className="alert alert-warning" role="status" style={{ marginBottom: 16 }}>
+          This workspace is paused, so members can’t see its perks right now.{" "}
+          {data.role === "owner" || data.elevated ? <Link to={`/app/${orgSlug}/manage/settings`}>Resume it</Link> : "The owner can resume it."}
+        </div>
+      ) : null}
       <section className="org-hero">
         <div className="accent-bar" style={{ background: org.accent_color || "var(--brand-mint)" }} />
         <div className="spread">
@@ -100,6 +106,7 @@ export function ManageLayout() {
       { title: "Insights", items: [{ to: `${b}/reports`, label: "Reports" }] },
       { title: "Workspace", items: [{ to: `${b}/branding`, label: "Branding" }, { to: `${b}/launch`, label: "Launch materials" }, { to: `${b}/services`, label: "Management Services" }] },
     );
+    if ((role === "owner" || data.elevated) && data.org.kind === "client") sections[sections.length - 1].items.push({ to: `${b}/settings`, label: "Pause or delete" });
   } else {
     sections[0].items.push({ to: `${b}/providers`, label: "My providers" }, { to: "/provider/verify", label: "Verify redemptions" });
   }
@@ -111,6 +118,11 @@ export function ManageLayout() {
           <div className="eyebrow">{role === "provider_manager" ? "Provider manager" : "Administration"}</div>
           <div style={{ fontWeight: 600 }}>{data.org.name}</div>
           {data.org.is_demo ? <DemoBadge /> : null}
+          {data.org.status === "suspended" ? (
+            <div style={{ marginTop: 6 }}>
+              <span className="badge badge-paused">Paused</span>
+            </div>
+          ) : null}
           <div style={{ marginTop: 8 }}>
             <Link to={`/app/${orgSlug}`} style={{ fontSize: ".85rem" }}>View member portal →</Link>
           </div>
@@ -1085,6 +1097,112 @@ export function ManageLaunch() {
             <p className="muted">Choose a template or saved draft to edit.</p>
           )}
         </div>
+      </div>
+    </Wrap>
+  );
+}
+
+// ======================= Owner: pause / resume / delete =======================
+export function ManageWorkspaceSettings() {
+  const { orgSlug = "" } = useParams();
+  useDocumentTitle("Pause or delete workspace");
+  const qc = useQueryClient();
+  const toast = useToast();
+  const nav = useNavigate();
+  const { data } = useOrg(orgSlug);
+  const [busy, setBusy] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
+  const [password, setPassword] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  if (!data) return <Wrap><Spinner /></Wrap>;
+  const org = data.org;
+  if (!(data.role === "owner" || data.elevated) || org.kind !== "client")
+    return (
+      <Wrap>
+        <PageHeader title="Pause or delete" eyebrow="Workspace" />
+        <div className="alert alert-info">Only the workspace owner can pause or delete this workspace.</div>
+      </Wrap>
+    );
+  const paused = org.status === "suspended";
+
+  async function setPaused(next: boolean) {
+    if (next && !confirm(`Pause ${org.name}? Members will lose access to its perks until you resume it.`)) return;
+    setBusy(true);
+    try {
+      await api.post(`/orgs/${orgSlug}/pause`, { paused: next });
+      await Promise.all([qc.invalidateQueries({ queryKey: ["org", orgSlug] }), qc.invalidateQueries({ queryKey: ["me"] })]);
+      toast(next ? "Workspace paused" : "Workspace resumed — members have access again");
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function del(e: React.FormEvent) {
+    e.preventDefault();
+    setErrors({});
+    setBusy(true);
+    try {
+      await api.post(`/orgs/${orgSlug}/delete`, { confirmName, password });
+      qc.removeQueries({ queryKey: ["org", orgSlug] });
+      await qc.invalidateQueries({ queryKey: ["me"] });
+      toast(`${org.name} was deleted`);
+      nav("/perks", { replace: true });
+    } catch (x) {
+      setErrors((x as ApiError).fields ?? {});
+      toast((x as Error).message, "error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Wrap>
+      <PageHeader title="Pause or delete" eyebrow="Workspace" />
+      <div className="stack" style={{ display: "grid", gap: 20, maxWidth: 760 }}>
+        <section className="panel" aria-labelledby="pause-h">
+          <div className="spread" style={{ alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <h2 id="pause-h" style={{ fontSize: "1.2rem", marginTop: 0 }}>
+                {paused ? "This workspace is paused" : "Pause this workspace"}
+              </h2>
+              <span className={`badge ${paused ? "badge-paused" : "badge-mint"}`}>{paused ? "Paused" : "Active"}</span>
+            </div>
+            <button className={`btn ${paused ? "btn-primary" : "btn-ghost"}`} disabled={busy} onClick={() => setPaused(!paused)}>
+              {paused ? "Resume workspace" : "Pause workspace"}
+            </button>
+          </div>
+          <ul className="muted" style={{ margin: "14px 0 0", paddingLeft: 18, lineHeight: 1.7 }}>
+            <li>While paused, members, provider managers and invitees can’t open the workspace or use its perks.</li>
+            <li>Owners and admins can still sign in here to manage it.</li>
+            <li>Nothing is deleted — resume at any time and everything is back as it was.</li>
+          </ul>
+        </section>
+
+        <section className="panel danger-zone" aria-labelledby="delete-h">
+          <h2 id="delete-h" style={{ fontSize: "1.2rem", marginTop: 0 }}>Delete this workspace</h2>
+          <p style={{ marginTop: 0 }}>
+            This permanently deletes <strong>{org.name}</strong>: its programs, offers, providers, members’ access, invitations, uploaded images and
+            reports. Member accounts themselves are kept, and they keep access to any other programs they belong to.{" "}
+            <strong>This can’t be undone.</strong> If you might come back, pause the workspace instead.
+          </p>
+          <form onSubmit={del} className="stack" style={{ display: "grid", gap: 12, maxWidth: 460 }}>
+            <TextField
+              label={<>Type <strong>{org.name}</strong> to confirm</>}
+              value={confirmName}
+              onChange={(e) => setConfirmName(e.target.value)}
+              error={errors.confirmName}
+              autoComplete="off"
+              required
+            />
+            <TextField label="Your password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} error={errors.password} autoComplete="current-password" required />
+            <div>
+              <button className="btn btn-danger" type="submit" disabled={busy || confirmName.trim() !== org.name || !password}>
+                {busy ? "Deleting…" : "Delete workspace permanently"}
+              </button>
+            </div>
+          </form>
+        </section>
       </div>
     </Wrap>
   );

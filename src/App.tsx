@@ -40,6 +40,7 @@ const ManageReports = L(org, "ManageReports");
 const ManageLicensed = L(org, "ManageLicensed");
 const ManageLaunch = L(org, "ManageLaunch");
 const ManageServices = L(org, "ManageServices");
+const ManageWorkspaceSettings = L(org, "ManageWorkspaceSettings");
 const InternalLayout = L(internal, "InternalLayout");
 const InternalOverview = L(internal, "InternalOverview");
 const ResearchPage = L(internal, "ResearchPage");
@@ -131,6 +132,7 @@ const router = createBrowserRouter(
       { path: "licensed", element: S(<ManageLicensed />) },
       { path: "launch", element: S(<ManageLaunch />) },
       { path: "services", element: S(<ManageServices />) },
+      { path: "settings", element: S(<ManageWorkspaceSettings />) },
     ],
   },
   {

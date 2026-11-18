@@ -3,6 +3,7 @@ import type { AppEnv, Ctx } from "../context";
 import { requireOrgRole, type OrgRole } from "../lib/authz";
 import { badRequest, forbidden, fromZod, notFound, conflict } from "../lib/errors";
 import { audit, rateLimit } from "../lib/security";
+import { passwordAuth } from "../lib/auth";
 import { createPerk, updatePerk, newProviderRef } from "../lib/publish";
 import { perkInputSchema, emailSchema } from "../../shared/schemas";
 import { canTransition, effectiveStatus, statusForWindow, type PerkStatus } from "../../shared/perk";
@@ -675,6 +676,44 @@ function relLum(hex: string) {
 export function contrastOnBlack(hex: string) {
   return (relLum(hex) + 0.05) / 0.05;
 }
+
+// ---- Owner-only workspace lifecycle: pause / resume / delete ----
+async function requireOwner(c: Ctx) {
+  const ctx = await requireOrgRole(c, c.req.param("slug")!, ["owner"]);
+  if (ctx.org.kind !== "client") throw forbidden("The Culturosity workspace cannot be paused or deleted.");
+  return ctx;
+}
+
+manageRoutes.post("/orgs/:slug/pause", async (c) => {
+  const { org, user } = await requireOwner(c);
+  const { paused } = (await c.req.json().catch(() => ({}))) as { paused?: boolean };
+  if (typeof paused !== "boolean") throw badRequest("Say whether to pause or resume the workspace.");
+  const { db } = c.get("deps");
+  await db.query(`update organizations set status = $2, updated_at = now() where id = $1`, [org.id, paused ? "suspended" : "active"]);
+  await audit(db, { actor: user.id, orgId: org.id, action: paused ? "org.paused" : "org.resumed", targetType: "organization", targetId: org.id });
+  return c.json({ ok: true, status: paused ? "suspended" : "active" });
+});
+
+manageRoutes.post("/orgs/:slug/delete", async (c) => {
+  const { org, user } = await requireOwner(c);
+  const { db, storage } = c.get("deps");
+  await rateLimit(db, `org-delete:${user.id}`, 5, 3600);
+  const b = (await c.req.json().catch(() => ({}))) as { confirmName?: string; password?: string };
+  if ((b.confirmName ?? "").trim() !== org.name)
+    throw badRequest("Type the workspace name exactly as shown to confirm.", { confirmName: `Type “${org.name}”` });
+  const ok = b.password ? await passwordAuth.verifyPassword(db, user.email, b.password) : null;
+  if (!ok || ok.id !== user.id) throw badRequest("Your password is incorrect.", { password: "Incorrect password" });
+  const keys = (await db.query<{ storage_key: string }>(`select storage_key from assets where org_id = $1`, [org.id])).rows.map((r) => r.storage_key);
+  await db.tx(async (q) => {
+    // Offers first (they reference providers), then the workspace; everything else cascades.
+    await q.query(`delete from perks where org_id = $1`, [org.id]);
+    await q.query(`delete from organizations where id = $1`, [org.id]);
+    await audit(q, { actor: user.id, orgId: null, action: "org.deleted", targetType: "organization", targetId: org.id, meta: { name: org.name, slug: org.slug } });
+  });
+  // Uploaded files are removed after the data; a failure here only leaves unreachable files behind.
+  await Promise.allSettled(keys.map((k) => storage.remove(k)));
+  return c.json({ ok: true });
+});
 
 manageRoutes.patch("/orgs/:slug", async (c) => {
   const { org, user } = await requireOrgRole(c, c.req.param("slug"), ADMIN);

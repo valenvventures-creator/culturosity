@@ -10,6 +10,7 @@ export interface Membership {
   org_kind: "culturosity" | "client";
   is_demo: boolean;
   program_display_name: string | null;
+  org_status?: "active" | "suspended";
 }
 export interface ProgramAccess {
   program_id: string;

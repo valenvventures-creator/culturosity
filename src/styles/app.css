@@ -2943,3 +2943,17 @@ table.data tr.clickable {
 :root[data-theme="light"] .theme-area .mcard .mcard-name {
   color: #fff;
 }
+
+/* Workspace lifecycle */
+.badge-paused {
+  background: rgba(210, 245, 56, 0.16);
+  color: var(--brand-lime);
+}
+:root[data-theme="light"] .theme-area .badge-paused,
+.surface-light .badge-paused {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.danger-zone {
+  border-color: rgba(180, 35, 44, 0.55) !important;
+}

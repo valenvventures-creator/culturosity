@@ -29,6 +29,7 @@ export function WorkspaceSwitcher({ me }: { me: Me }) {
         {orgs.map((o) => (
           <option key={o.org_slug} value={o.org_slug}>
             {o.org_name}
+            {o.org_status === "suspended" ? " (paused)" : ""}
           </option>
         ))}
       </select>
@@ -70,6 +71,7 @@ function AccountMenu({ me }: { me: Me }) {
           {adminOrgs.map((o) => (
             <MenuLink key={o.org_slug} to={`/app/${o.org_slug}/manage`}>
               Manage {o.org_name}
+              {o.org_status === "suspended" ? " (paused)" : ""}
             </MenuLink>
           ))}
           {(me.providerAssignments ?? []).length || adminOrgs.length ? <MenuLink to="/provider/verify">Verify a redemption</MenuLink> : null}
