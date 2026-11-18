@@ -187,7 +187,7 @@ export function InternalOverview() {
           [`${B}/research`, "Research Directory", "Canada & USA affinity, employee-discount and member-benefit programs, with sources."],
           [`${B}/outreach`, "Sales Outreach", "Drafts for email, text, phone and demos — grounded in stored sources. Nothing is sent automatically."],
           [`${B}/pipeline`, "Pipeline", "Stages from Researching to Won, with owners, next actions and logged activity."],
-          [`${B}/demo-guide`, "Demo Guide", "A resettable walkthrough using isolated demo organizations."],
+          [`${B}/demo-guide`, "Demo Guide", "A step-by-step sales demo using the live site's real pages."],
         ].map(([to, t, d]) => (
           <Link key={to} to={to} className="panel" style={{ textDecoration: "none", color: "inherit" }}>
             <h2 style={{ fontSize: "1.15rem" }}>{t} →</h2>
@@ -1011,50 +1011,32 @@ export function PipelinePage() {
 
 // ======================= Demo guide =======================
 export function DemoGuidePage() {
-  const superAdmin = Boolean(useMe().data?.grants?.includes("super_admin"));
   useDocumentTitle("Demo Guide");
-  const toast = useToast();
-  const [busy, setBusy] = useState(false);
-  const steps = [
-    ["Introduce Culturosity's own perks experience", "/perks", "Open Culturosity Perks; point out value labels, dates and the New / A–Z / Favourites controls."],
-    ["Browse a company program and open a perk", "/app/northwind-demo", "Northwind Demo Co. — open Cedar Lane Fitness."],
-    ["Show dates, offer value, redemption instructions and member card", "/app/northwind-demo", "Generate a member code and verify it on /provider/verify as the provider persona."],
-    ["Submit a clearly labelled sample offer and show its automatic appearance", "/app/northwind-demo/submit-perk", "Publish, then select View Perk — no copying into the catalogue."],
-    ["Switch to company administration: member access and measured reporting", "/app/northwind-demo/manage", "Dashboard, Members & roles, Reports with definitions."],
-    ["Explain Self-Service, Launch with Culturosity and Fully Managed", "/services", "No invented pricing — Request a Proposal."],
-    ["Close with a demo booking or proposal request", "/services#request", "Use the configured booking link or the proposal form."],
+  // A real, fully detailed Culturosity perk to open in the demo (newest first).
+  const { data } = useQuery<any>({ queryKey: ["demo-guide-perk"], queryFn: () => api.get("/public/perks?sort=new") });
+  const sample = (data?.perks ?? []).find((p: any) => !p.is_demo && !p.details_pending);
+  const perkLink = sample ? `/perks/${sample.id}` : "/perks";
+  const perkName = sample ? `${sample.provider_name} — ${sample.title}` : "any perk";
+  const steps: [string, string, string][] = [
+    ["Introduce Culturosity Perks", "/perks", "Show the catalogue: value labels (Save 15%, Free, BOGO), the New / A–Z / Ending soon sorting, search and filters, and the light/dark switch."],
+    ["Open a perk’s Details page", perkLink, `Open ${perkName}. Walk through the value pill and Use Perk button, the large image, the green offer card with the promo code, and the provider’s website, email and directions.`],
+    ["Explain redeeming in person: the member card", perkLink, "Scroll to the member card. Each perk has its own QR code that the provider links to their point-of-sale system; members show it at checkout. (Signed-out visitors see it locked.)"],
+    ["Show the Culturosity app", "/", "On the home page, point to the App Store and Google Play badges — members use the same perks in the Culturosity app."],
+    ["Explain affinity programs for organizations", "/affinity", "How a company, association or union gets its own private perks program for its people, alongside Culturosity Perks."],
+    ["Show how providers add offers", "/submit-perk", "Show the Submit a Perk form only — don’t submit it during a demo, because submitting publishes a real perk."],
+    ["Explain Self-Service, Launch with Culturosity and Fully Managed", "/services", "Walk through the three ways to work with Culturosity. No invented pricing — offer a proposal instead."],
+    ["Close with a demo booking or proposal request", "/services#request", "Book a follow-up with the booking link, or fill in Request a Proposal together (it goes to the Service queue and emails Culturosity)."],
   ];
   return (
     <Wrap>
-      <PageHeader title="Demo Guide" eyebrow="Admin Research & Sales">
-        {superAdmin ? (
-        <button
-          className="btn btn-ghost"
-          disabled={busy}
-          onClick={async () => {
-            if (!confirm("Reset all demo workspaces to their starting state? Real data is not affected.")) return;
-            setBusy(true);
-            try {
-              await api.post("/internal/demo/reset");
-              toast("Demo data reset");
-            } catch (e: any) {
-              toast(e.message, "error");
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {busy ? "Resetting…" : "Reset demo data"}
-        </button>
-        ) : null}
-      </PageHeader>
-      <div className="alert alert-warning" style={{ marginBottom: 14 }}>
-        Use only the isolated demo organizations (Northwind Demo Co., Harbour Demo Union, Culturosity Perks — Demo). Demo offers are fictional and never grant a real merchant benefit.
+      <PageHeader title="Demo Guide" eyebrow="Admin Research & Sales" />
+      <div className="alert alert-info" style={{ marginBottom: 14 }}>
+        Every step opens a real page on the live site. Look around freely, but don’t submit forms during a demo unless you mean to.
       </div>
       <ol style={{ display: "grid", gap: 12, paddingLeft: 0, listStyle: "none" }}>
         {steps.map(([t, to, d], i) => (
           <li key={t} className="panel">
-            <div className="spread">
+            <div className="spread" style={{ gap: 16 }}>
               <div>
                 <div className="eyebrow">Step {i + 1}</div>
                 <h3 style={{ margin: "4px 0" }}>{t}</h3>
@@ -1065,7 +1047,6 @@ export function DemoGuidePage() {
           </li>
         ))}
       </ol>
-      <p className="muted" style={{ fontSize: ".88rem" }}>Demo personas (local demo): member@demo.culturosity.test, admin@northwind.example, provider@demo.culturosity.test — see README.</p>
     </Wrap>
   );
 }
