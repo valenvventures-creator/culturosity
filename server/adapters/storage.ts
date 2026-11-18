@@ -81,7 +81,10 @@ export async function createNetlifyBlobsStorage(): Promise<StorageAdapter> {
 
 export async function createStorageFromConfig(cfg: ServerConfig): Promise<StorageAdapter> {
   if (cfg.storageDriver === "netlify-blobs") return createNetlifyBlobsStorage();
-  if (cfg.storageDriver === "memory") return createMemoryStorage();
+  if (cfg.storageDriver === "memory") {
+    if (cfg.mode === "production") throw new Error("STORAGE_DRIVER=memory is not durable and is refused in production.");
+    return createMemoryStorage();
+  }
   if (cfg.mode === "production") throw new Error("STORAGE_DRIVER=local is for the local demo only. Use netlify-blobs in production.");
   return createLocalStorage(cfg.uploadDir);
 }

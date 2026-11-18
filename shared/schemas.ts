@@ -169,7 +169,7 @@ export const submissionSchema = z.object({
     name: z.string().trim().min(2, "Enter your name").max(120),
     email: emailSchema,
     organization: z.string().trim().max(160).default(""),
-    authorityConfirmed: z.literal(true, { errorMap: () => ({ message: "Confirm you are authorised to publish this offer and media" }) }),
+    authorityConfirmed: z.literal(true, { error: "Confirm you are authorised to publish this offer and media" }),
   }),
 });
 export type SubmissionInput = z.infer<typeof submissionSchema>;
@@ -177,7 +177,7 @@ export type SubmissionInput = z.infer<typeof submissionSchema>;
 export const draftSchema = z.object({
   idempotencyKey: z.string().min(16).max(100),
   destination: z.object({ orgId: z.string().uuid(), programId: z.string().uuid() }),
-  draft: z.record(z.unknown()),
+  draft: z.record(z.string(), z.unknown()),
 });
 
 export const SERVICE_NEEDS = [

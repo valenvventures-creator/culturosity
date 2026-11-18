@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { createApp } from "../server/app";
-import { createPgliteDb } from "../server/db";
+import { createPgliteDb, createPgDb } from "../server/db";
 import { migrate } from "../server/db/migrate";
 import { loadConfig } from "../server/env";
 import { createMemoryStorage } from "../server/adapters/storage";
@@ -17,7 +17,11 @@ export const PASSWORD = DEMO_DEFAULT_PASSWORD;
 
 export async function setup() {
   const config = { ...loadConfig({ APP_MODE: "demo", APP_BASE_URL: "http://localhost:5173" }), storageDriver: "memory" as const };
-  const db = await createPgliteDb(null);
+  // Default: in-memory PGlite. Set TEST_DATABASE_URL to run the same suite against real PostgreSQL
+  // (the schema in that database is dropped and recreated).
+  const url = process.env.TEST_DATABASE_URL;
+  const db = url ? await createPgDb(url, 5) : await createPgliteDb(null);
+  if (url) await db.query("drop schema public cascade; create schema public;");
   await migrate(db, resolve(process.cwd(), "server/db/migrations"));
   const storage = createMemoryStorage();
   const deps: Deps = {

@@ -1,0 +1,1071 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, ApiError, qs } from "../lib/api";
+import { useMe, isInternal } from "../lib/session";
+import { AppShell, PageHeader } from "../components/AppShell";
+import { Checkbox, Drawer, EmptyState, ErrorAlert, SelectField, Spinner, Stat, TextArea, TextField, useDocumentTitle, useToast, DotField, Logo } from "../components/ui";
+import { IconLock } from "../components/Icons";
+import { BottomNav, DemoBanner, SiteHeader } from "../components/Layout";
+import {
+  OUTREACH_CHANNELS,
+  OUTREACH_OBJECTIVES,
+  PIPELINE_LABELS,
+  PIPELINE_STAGES,
+  PROSPECT_TYPES,
+  PROSPECT_TYPE_LABELS,
+} from "@shared/schemas";
+
+const B = "/culturosity/admin";
+
+function useGate() {
+  return useQuery<any>({ queryKey: ["gate"], queryFn: () => api.get("/internal/gate"), retry: false, refetchInterval: 60_000 });
+}
+
+/** Internal shell: only for internal grants, and only after the numerical unlock. */
+export function InternalLayout() {
+  const { data: me, isLoading } = useMe();
+  const gate = useGate();
+  const qc = useQueryClient();
+  if (isLoading || gate.isLoading) return <div className="container page"><Spinner /></div>;
+  if (!me?.user) return <Navigate to={`/auth/signin?next=${B}`} replace />;
+  if (!isInternal(me) || gate.error) return <Navigate to="/perks" replace />;
+  if (!gate.data?.unlocked)
+    return (
+      <>
+        <DemoBanner />
+        <SiteHeader />
+        <main id="main">
+          <GatePage onUnlocked={() => { qc.invalidateQueries({ queryKey: ["gate"] }); qc.invalidateQueries({ queryKey: ["me"] }); }} configured={gate.data?.configured} />
+        </main>
+        <BottomNav />
+      </>
+    );
+  return (
+    <AppShell
+      sections={[
+        { title: "Internal", items: [{ to: `${B}/overview`, label: "Overview" }, { to: `${B}/research`, label: "Research Directory" }, { to: `${B}/outreach`, label: "Sales Outreach" }, { to: `${B}/pipeline`, label: "Pipeline" }, { to: `${B}/demo-guide`, label: "Demo Guide" }] },
+        { title: "Operations", items: [{ to: `${B}/services`, label: "Service queue" }, { to: `${B}/workspaces`, label: "Client workspaces" }, { to: `/app/culturosity/manage`, label: "Culturosity catalogue" }, { to: `${B}/settings`, label: "Access settings" }] },
+      ]}
+      header={<LockBar expiresAt={gate.data.expiresAt} idle={gate.data.idleMinutes} />}
+    />
+  );
+}
+
+function LockBar({ expiresAt, idle }: { expiresAt: string; idle: number }) {
+  const qc = useQueryClient();
+  const nav = useNavigate();
+  return (
+    <div style={{ padding: "0 12px 16px" }}>
+      <div className="eyebrow">Admin Research &amp; Sales</div>
+      <div className="muted" style={{ fontSize: ".8rem" }}>
+        Unlocked · locks after {idle} min idle or at {new Date(expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+      </div>
+      <button
+        className="btn btn-ghost btn-sm"
+        style={{ marginTop: 10 }}
+        onClick={async () => {
+          await api.post("/internal/gate/lock");
+          qc.removeQueries({ queryKey: ["internal"] });
+          await qc.invalidateQueries({ queryKey: ["gate"] });
+          nav(B);
+        }}
+      >
+        <IconLock size={16} /> Lock Portal
+      </button>
+    </div>
+  );
+}
+
+export function GatePage({ onUnlocked, configured }: { onUnlocked: () => void; configured: boolean }) {
+  useDocumentTitle("Admin Research & Sales");
+  const [digits, setDigits] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [shake, setShake] = useState(false);
+  const nav = useNavigate();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const press = (d: string) => setDigits((x) => (x.length < 20 ? x + d : x));
+  async function submit() {
+    if (!digits) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.post("/internal/gate/unlock", { code: digits });
+      setDigits("");
+      onUnlocked();
+      nav(`${B}/overview`);
+    } catch (e) {
+      setErr((e as ApiError).message);
+      setShake(true);
+      setTimeout(() => setShake(false), 400);
+      setDigits("");
+    } finally {
+      setBusy(false);
+      inputRef.current?.focus();
+    }
+  }
+  return (
+    <div style={{ position: "relative", minHeight: "70vh" }}>
+      <DotField density={14} seed={5} centered />
+      <div className="container page" style={{ position: "relative" }}>
+        <div className="keypad-wrap">
+          <Logo height={56} />
+          <h1 style={{ fontSize: "1.6rem", marginTop: 16 }}>Admin Research &amp; Sales</h1>
+          <p className="muted">Enter the numerical access code to unlock this session.</p>
+          {!configured ? <div className="alert alert-warning">The access code has not been initialised on the server. See README → Numerical gate.</div> : null}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit();
+            }}
+          >
+            <label htmlFor="gate-code" className="sr-only">Access code (digits only)</label>
+            <input
+              id="gate-code"
+              ref={inputRef}
+              className="input dark-input"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              pattern="[0-9]*"
+              value={digits}
+              onChange={(e) => setDigits(e.target.value.replace(/\D/g, "").slice(0, 20))}
+              style={{ textAlign: "center", letterSpacing: ".4em", fontSize: "1.3rem" }}
+              aria-describedby={err ? "gate-err" : undefined}
+              autoFocus
+            />
+            <div className={`keypad-dots ${shake ? "shake" : ""}`} aria-hidden>
+              {Array.from({ length: Math.max(10, digits.length) }).map((_, i) => <span key={i} className={i < digits.length ? "on" : ""} />)}
+            </div>
+            <div aria-live="assertive" id="gate-err" style={{ minHeight: 24, color: "#ff9aa2", fontWeight: 600 }}>{err}</div>
+            <div className="keypad" role="group" aria-label="Numeric keypad">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
+                <button type="button" key={d} onClick={() => press(d)} aria-label={`Digit ${d}`}>{d}</button>
+              ))}
+              <button type="button" className="aux" onClick={() => setDigits("")}>Clear</button>
+              <button type="button" onClick={() => press("0")} aria-label="Digit 0">0</button>
+              <button type="button" className="aux" onClick={() => setDigits((x) => x.slice(0, -1))} aria-label="Backspace">⌫</button>
+            </div>
+            <button className="btn btn-primary btn-block btn-lg" style={{ marginTop: 16 }} disabled={busy || !digits}>
+              {busy ? "Checking…" : "Unlock"}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Wrap({ children }: { children: React.ReactNode }) {
+  return <div className="container page">{children}</div>;
+}
+
+// ======================= Overview =======================
+export function InternalOverview() {
+  useDocumentTitle("Internal overview");
+  const { data, isLoading, error } = useQuery<any>({ queryKey: ["internal", "overview"], queryFn: () => api.get("/internal/overview") });
+  if (isLoading) return <Wrap><Spinner /></Wrap>;
+  if (error) return <Wrap><ErrorAlert error={error} /></Wrap>;
+  const stage = (s: string) => data.pipeline.find((p: any) => p.stage === s)?.n ?? 0;
+  return (
+    <Wrap>
+      <PageHeader title="Overview" eyebrow="Admin Research & Sales" />
+      <div className="stats">
+        <Stat label="Research records" value={data.research.n} hint={`${data.research.verified} with reviewed sources`} />
+        <Stat label="Last research date" value={data.research.last_checked ? new Date(data.research.last_checked).toLocaleDateString() : "—"} />
+        <Stat label="Qualified" value={stage("qualified")} />
+        <Stat label="Contacted" value={stage("contacted")} />
+        <Stat label="Demo booked" value={stage("demo_booked")} />
+        <Stat label="Open service requests" value={data.services.filter((s: any) => !["won", "closed"].includes(s.status)).reduce((a: number, s: any) => a + s.n, 0)} />
+      </div>
+      <div className="grid-2" style={{ marginTop: 16 }}>
+        {[
+          [`${B}/research`, "Research Directory", "Canada & USA affinity, employee-discount and member-benefit programs, with sources."],
+          [`${B}/outreach`, "Sales Outreach", "Drafts for email, text, phone and demos — grounded in stored sources. Nothing is sent automatically."],
+          [`${B}/pipeline`, "Pipeline", "Stages from Researching to Won, with owners, next actions and logged activity."],
+          [`${B}/demo-guide`, "Demo Guide", "A resettable walkthrough using isolated demo organizations."],
+        ].map(([to, t, d]) => (
+          <Link key={to} to={to} className="panel" style={{ textDecoration: "none", color: "inherit" }}>
+            <h2 style={{ fontSize: "1.15rem" }}>{t} →</h2>
+            <p className="muted" style={{ margin: 0 }}>{d}</p>
+          </Link>
+        ))}
+      </div>
+      <section className="panel" style={{ marginTop: 16 }}>
+        <h2 style={{ fontSize: "1.1rem" }}>Recent activity</h2>
+        {data.recentActivity.length ? (
+          <ul>{data.recentActivity.map((a: any, i: number) => <li key={i}>{new Date(a.occurred_at).toLocaleDateString()} · {a.display_name} · {a.kind}: {a.summary}</li>)}</ul>
+        ) : (
+          <p className="muted">No logged activity yet.</p>
+        )}
+      </section>
+    </Wrap>
+  );
+}
+
+// ======================= Research directory =======================
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#".split("");
+
+export function ResearchPage() {
+  useDocumentTitle("Research Directory");
+  const [sp, setSp] = useSearchParams();
+  const [q, setQ] = useState(sp.get("q") ?? "");
+  const [view, setView] = useState<"table" | "cards">("table");
+  const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const params = Object.fromEntries(sp.entries());
+  const { data, isLoading, error } = useQuery<any>({ queryKey: ["internal", "research", params], queryFn: () => api.get(`/internal/research${qs(params)}`), placeholderData: (p: any) => p });
+  const { data: connector } = useQuery<any>({ queryKey: ["internal", "connector"], queryFn: () => api.get("/internal/research/connector") });
+  const openId = sp.get("open");
+  const setParam = (k: string, v: string) => {
+    const n = new URLSearchParams(sp);
+    if (v) n.set(k, v);
+    else n.delete(k);
+    if (k !== "open") n.delete("page");
+    setSp(n, { replace: true });
+  };
+  useEffect(() => {
+    const t = setTimeout(() => q !== (sp.get("q") ?? "") && setParam("q", q), 300);
+    return () => clearTimeout(t);
+  }, [q]); // eslint-disable-line
+  const stats = data?.stats;
+  return (
+    <Wrap>
+      <PageHeader title="Research Directory" eyebrow="Canada & USA affinity programs">
+        <button className="btn btn-ghost" onClick={() => setImporting(true)}>Import CSV</button>
+        <a className="btn btn-ghost" href={`/api/internal/research/export.csv${qs(params)}`}>Export CSV</a>
+        <button className="btn btn-primary" onClick={() => setAdding(true)}>Add record</button>
+      </PageHeader>
+      {stats ? (
+        <div className="stats" style={{ marginBottom: 14 }}>
+          <Stat label="Records" value={stats.total} hint="A growing directory — not all programs" />
+          <Stat label="With reviewed sources" value={stats.verified} />
+          <Stat label="Canada · USA" value={`${stats.canada} · ${stats.usa}`} />
+          <Stat label="Last research" value={stats.last_research ? new Date(stats.last_research).toLocaleDateString() : "—"} />
+        </div>
+      ) : null}
+      <div className="alert alert-info" style={{ marginBottom: 14, fontSize: ".88rem" }}>
+        {connector?.note ?? "Loading connector status…"} Many programs are private or not described online; this directory is never a complete list.
+      </div>
+      <div className="panel" style={{ marginBottom: 14 }}>
+        <div className="grid-3">
+          <TextField label="Search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Organization, program, domain" />
+          <SelectField label="Country" value={params.country ?? ""} onChange={(e) => setParam("country", e.target.value)}>
+            <option value="">Canada and USA</option>
+            <option value="CA">Canada</option>
+            <option value="US">USA</option>
+          </SelectField>
+          <SelectField label="Prospect type" value={params.type ?? ""} onChange={(e) => setParam("type", e.target.value)}>
+            <option value="">All types</option>
+            {PROSPECT_TYPES.map((t) => <option key={t} value={t}>{PROSPECT_TYPE_LABELS[t]}</option>)}
+          </SelectField>
+          <TextField label="Province / state" value={params.region ?? ""} onChange={(e) => setParam("region", e.target.value)} />
+          <TextField label="Sector / industry" value={params.industry ?? ""} onChange={(e) => setParam("industry", e.target.value)} />
+          <TextField label="Operator" value={params.operator ?? ""} onChange={(e) => setParam("operator", e.target.value)} placeholder="e.g. BenefitHub" />
+          <SelectField label="Verification freshness" value={params.freshness ?? ""} onChange={(e) => setParam("freshness", e.target.value)}>
+            <option value="">Any</option>
+            <option value="fresh">Checked in last 90 days</option>
+            <option value="stale">Older than 90 days / never</option>
+          </SelectField>
+          <SelectField label="Outreach status" value={params.stage ?? ""} onChange={(e) => setParam("stage", e.target.value)}>
+            <option value="">Any stage</option>
+            {PIPELINE_STAGES.map((s) => <option key={s} value={s}>{PIPELINE_LABELS[s]}</option>)}
+          </SelectField>
+          <TextField label="Perk category" value={params.category ?? ""} onChange={(e) => setParam("category", e.target.value)} />
+        </div>
+        <div className="spread">
+          <div className="alpha-jump" role="group" aria-label="Jump to letter">
+            {LETTERS.map((l) => (
+              <button key={l} aria-pressed={params.letter === l} onClick={() => setParam("letter", params.letter === l ? "" : l)}>{l}</button>
+            ))}
+          </div>
+          <div className="segmented" role="group" aria-label="View">
+            <button aria-pressed={view === "table"} onClick={() => setView("table")}>Table</button>
+            <button aria-pressed={view === "cards"} onClick={() => setView("cards")}>Cards</button>
+          </div>
+        </div>
+      </div>
+      {error ? <ErrorAlert error={error} /> : null}
+      {isLoading ? <Spinner /> : null}
+      {data && !data.records.length ? <EmptyState title="No records match">Try clearing filters or add a record.</EmptyState> : null}
+      {data?.records.length ? (
+        view === "table" ? (
+          <div className="table-wrap">
+            <table className="data">
+              <thead><tr><th>Organization (A–Z)</th><th>Program</th><th>Type</th><th>Country</th><th>Verification</th><th>Stage</th></tr></thead>
+              <tbody>
+                {data.records.map((r: any) => (
+                  <tr key={r.id} className="clickable" onClick={() => setParam("open", r.id)}>
+                    <td><button className="btn btn-ghost btn-sm" style={{ border: 0, padding: 0, fontWeight: 700 }} onClick={(e) => { e.stopPropagation(); setParam("open", r.id); }}>{r.display_name}</button></td>
+                    <td>{(r.programs ?? []).map((p: any) => <div key={p.id}>{p.name}{p.operator ? <span className="muted"> · via {p.operator}</span> : null}</div>)}</td>
+                    <td>{r.prospect_types.map((t: string) => <span key={t} className="badge" style={{ marginRight: 4 }}>{t}</span>)}</td>
+                    <td>{r.country.join(", ")}</td>
+                    <td><span className="muted" style={{ fontSize: ".82rem" }}>{r.verification_status.replace("_", " ")}{r.last_checked_at ? ` · ${new Date(r.last_checked_at).toLocaleDateString()}` : ""}</span></td>
+                    <td>{PIPELINE_LABELS[r.stage as keyof typeof PIPELINE_LABELS]}{r.do_not_contact ? " · DNC" : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="grid-3">
+            {data.records.map((r: any) => (
+              <button key={r.id} className="panel" style={{ textAlign: "left", font: "inherit", cursor: "pointer" }} onClick={() => setParam("open", r.id)}>
+                <div className="eyebrow">{r.prospect_types.join(" · ")}</div>
+                <h3>{r.display_name}</h3>
+                <p className="muted" style={{ fontSize: ".88rem" }}>{(r.programs ?? []).map((p: any) => p.name).join(", ")}</p>
+                <span className="badge">{r.country.join(" / ")}</span>
+              </button>
+            ))}
+          </div>
+        )
+      ) : null}
+      {data && data.total > data.pageSize ? (
+        <div className="row" style={{ marginTop: 12 }}>
+          <button className="btn btn-ghost btn-sm" disabled={data.page <= 1} onClick={() => setParam("page", String(data.page - 1))}>Previous</button>
+          <span className="muted">Page {data.page}</span>
+          <button className="btn btn-ghost btn-sm" disabled={data.page * data.pageSize >= data.total} onClick={() => setParam("page", String(data.page + 1))}>Next</button>
+        </div>
+      ) : null}
+      <Drawer open={Boolean(openId)} onClose={() => setParam("open", "")} title="Research record">
+        {openId ? <ResearchDetail id={openId} /> : null}
+      </Drawer>
+      <Drawer open={adding} onClose={() => setAdding(false)} title="Add research record">
+        <AddResearch onDone={(id) => { setAdding(false); setParam("open", id); }} />
+      </Drawer>
+      <Drawer open={importing} onClose={() => setImporting(false)} title="Import research CSV">
+        <ImportResearch />
+      </Drawer>
+    </Wrap>
+  );
+}
+
+function ResearchDetail({ id }: { id: string }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const nav = useNavigate();
+  const { data, isLoading, error } = useQuery<any>({ queryKey: ["internal", "research-detail", id], queryFn: () => api.get(`/internal/research/${id}`) });
+  const [note, setNote] = useState<string | null>(null);
+  const [activity, setActivity] = useState({ kind: "note", summary: "", advanceToContacted: true });
+  const [src, setSrc] = useState({ url: "", title: "", reviewedAt: new Date().toISOString().slice(0, 10), note: "" });
+  const [contact, setContact] = useState({ name: "", title: "", email: "", phone: "", provenance: "", sourceUrl: "", emailPermission: "unknown", smsPermission: "unknown", phonePermission: "unknown" });
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["internal", "research-detail", id] });
+    qc.invalidateQueries({ queryKey: ["internal", "research"] });
+  };
+  const recheck = useMutation({
+    mutationFn: (sourceId: string) => api.post(`/internal/research/${id}/sources/${sourceId}/recheck`),
+    onSuccess: (r: any) => {
+      toast(r.result.ok ? (r.crossDomain ? "Reachable but redirected to another domain — review needed" : "URL reachable (page claims not re-verified)") : `Recheck failed: ${r.result.error ?? r.result.status}`, r.result.ok && !r.crossDomain ? "ok" : "error");
+      refresh();
+    },
+    onError: (e: any) => toast(e.message, "error"),
+  });
+  if (isLoading) return <Spinner />;
+  if (error) return <ErrorAlert error={error} />;
+  const r = data.record;
+  const p = data.prospect;
+  const notConfirmed = <span className="muted">Not publicly confirmed</span>;
+  return (
+    <div className="stack">
+      <div>
+        <div className="eyebrow">{r.prospect_types.map((t: string) => PROSPECT_TYPE_LABELS[t as keyof typeof PROSPECT_TYPE_LABELS]).join(" · ")}</div>
+        <h2 style={{ margin: "4px 0" }}>{r.display_name}</h2>
+        {r.aliases.length ? <div className="muted">Also known as: {r.aliases.join(", ")}</div> : null}
+        {r.legacy_of_name ? <div className="alert alert-warning">Legacy alias of <strong>{r.legacy_of_name}</strong>. Not counted as an independent current operator.</div> : null}
+        <div className="row" style={{ marginTop: 8 }}>
+          <span className="badge">{r.country.join(" / ")}</span>
+          <span className="badge">{r.verification_status.replace("_", " ")}</span>
+          {r.last_checked_at ? <span className="badge">Checked {new Date(r.last_checked_at).toLocaleDateString()}</span> : null}
+        </div>
+      </div>
+      <div className="row">
+        <button className="btn btn-primary" onClick={() => nav(`${B}/outreach?org=${id}`)} disabled={p?.do_not_contact}>Generate outreach</button>
+        {data.programs[0]?.official_website ? <a className="btn btn-ghost" href={data.programs[0].official_website} target="_blank" rel="noopener noreferrer">Official website</a> : null}
+        {data.programs[0]?.program_url ? <a className="btn btn-ghost" href={data.programs[0].program_url} target="_blank" rel="noopener noreferrer">Program page</a> : null}
+        {data.programs[0]?.contact_url ? <a className="btn btn-ghost" href={data.programs[0].contact_url} target="_blank" rel="noopener noreferrer">Contact route</a> : null}
+      </div>
+
+      <section className="panel">
+        <h3 style={{ fontSize: "1rem" }}>Verified facts</h3>
+        <dl style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: "6px 12px", margin: 0, fontSize: ".92rem" }}>
+          <dt>Research focus</dt><dd style={{ margin: 0 }}>{r.research_focus || notConfirmed}</dd>
+          <dt>Industry</dt><dd style={{ margin: 0 }}>{r.industry || notConfirmed}</dd>
+          <dt>Region</dt><dd style={{ margin: 0 }}>{r.region || notConfirmed}</dd>
+          <dt>Audience</dt><dd style={{ margin: 0 }}>{r.audience || notConfirmed}</dd>
+          <dt>Domain</dt><dd style={{ margin: 0 }}>{r.primary_domain || notConfirmed}</dd>
+        </dl>
+        {data.programs.map((pr: any) => (
+          <div key={pr.id} style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #eee" }}>
+            <strong>{pr.name}</strong>{pr.operator_name ? <span className="muted"> · operated by {pr.operator_name}</span> : null}
+            <p style={{ margin: "4px 0" }}>{pr.summary || notConfirmed}</p>
+            <div className="muted" style={{ fontSize: ".86rem" }}>
+              Coverage: {pr.coverage || "Not publicly confirmed"} · Eligibility: {pr.eligibility || "Not publicly confirmed"} · Pricing: {pr.pricing || "Not publicly confirmed"}
+            </div>
+            <div className="muted" style={{ fontSize: ".86rem" }}>
+              Public email: {pr.public_email || "Not publicly confirmed"} · Public phone: {pr.public_phone || "Not publicly confirmed"}
+            </div>
+          </div>
+        ))}
+        {data.operatedPrograms.length ? (
+          <div style={{ marginTop: 12 }}>
+            <strong>Operates programs for:</strong>{" "}
+            {data.operatedPrograms.map((o: any) => <button key={o.id} className="btn btn-ghost btn-sm" onClick={() => nav(`${B}/research?open=${o.organization_id}`)}>{o.organization}</button>)}
+          </div>
+        ) : null}
+        {data.legacyAliases.length ? <p className="muted">Legacy aliases: {data.legacyAliases.map((a: any) => `${a.display_name} (${a.primary_domain})`).join(", ")}</p> : null}
+      </section>
+
+      <section className="panel">
+        <h3 style={{ fontSize: "1rem" }}>Sources &amp; evidence</h3>
+        {data.sources.map((s: any) => (
+          <div key={s.id} style={{ padding: "8px 0", borderBottom: "1px solid #eee", fontSize: ".9rem" }}>
+            <a href={s.url} target="_blank" rel="noopener noreferrer" style={{ overflowWrap: "anywhere" }}>{s.url}</a>
+            <div className="muted">
+              {s.review_level === "page_reviewed" ? "Page reviewed" : s.review_level === "url_rechecked" ? "URL rechecked (reachability only)" : "Imported — needs review"} ·{" "}
+              {new Date(s.reviewed_at).toLocaleDateString()}
+              {s.http_status ? ` · HTTP ${s.http_status}` : ""}
+              {s.redirected_to ? ` · redirected to ${s.redirected_to}` : ""}
+            </div>
+            {s.note ? <div className="muted">{s.note}</div> : null}
+            <button className="btn btn-ghost btn-sm" style={{ marginTop: 6 }} disabled={recheck.isPending} onClick={() => recheck.mutate(s.id)}>Recheck URL</button>
+          </div>
+        ))}
+        <form
+          style={{ marginTop: 12 }}
+          onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              await api.post(`/internal/research/${id}/sources`, src);
+              setSrc({ ...src, url: "", title: "", note: "" });
+              refresh();
+              toast("Source added");
+            } catch (x: any) {
+              toast(x.message, "error");
+            }
+          }}
+        >
+          <div className="grid-2">
+            <TextField label="Source URL" type="url" required value={src.url} onChange={(e) => setSrc({ ...src, url: e.target.value })} />
+            <TextField label="Reviewed on" type="date" value={src.reviewedAt} onChange={(e) => setSrc({ ...src, reviewedAt: e.target.value })} />
+          </div>
+          <TextField label="What this page establishes" value={src.note} onChange={(e) => setSrc({ ...src, note: e.target.value })} />
+          <button className="btn btn-ghost btn-sm">Add reviewed source</button>
+        </form>
+      </section>
+
+      <section className="panel">
+        <h3 style={{ fontSize: "1rem" }}>Pipeline</h3>
+        <ProspectEditor id={id} prospect={p} onSaved={refresh} />
+      </section>
+
+      <section className="panel">
+        <h3 style={{ fontSize: "1rem" }}>Internal analysis</h3>
+        <p className="muted" style={{ fontSize: ".85rem" }}>Assessments here are internal opinions, not verified facts.</p>
+        <TextArea label="Potential fit (internal)" value={note ?? r.fit_assessment} onChange={(e) => setNote(e.target.value)} rows={3} />
+        <button className="btn btn-ghost btn-sm" onClick={async () => { await api.patch(`/internal/research/${id}`, { fitAssessment: note ?? r.fit_assessment }); toast("Saved"); refresh(); }}>Save analysis</button>
+      </section>
+
+      <section className="panel">
+        <h3 style={{ fontSize: "1rem" }}>Business contacts</h3>
+        <p className="muted" style={{ fontSize: ".85rem" }}>Record only contacts actually published or provided, with provenance. A public contact page is not consent to text marketing.</p>
+        {data.contacts.map((ct: any) => (
+          <div key={ct.id} style={{ padding: "8px 0", borderBottom: "1px solid #eee", fontSize: ".9rem" }}>
+            <strong>{ct.name || "(no name)"}</strong> {ct.title} · {ct.email ?? ""} {ct.phone ?? ""}
+            <div className="muted">Source: {ct.provenance} · email {ct.email_permission} · SMS {ct.sms_permission} · phone {ct.phone_permission}{ct.do_not_contact ? " · DO NOT CONTACT" : ""}</div>
+            <button className="btn btn-ghost btn-sm" onClick={async () => { await api.patch(`/internal/contacts/${ct.id}`, { doNotContact: !ct.do_not_contact }); refresh(); }}>
+              {ct.do_not_contact ? "Remove suppression" : "Mark do not contact"}
+            </button>
+          </div>
+        ))}
+        <form
+          style={{ marginTop: 10 }}
+          onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              await api.post(`/internal/research/${id}/contacts`, contact);
+              setContact({ ...contact, name: "", title: "", email: "", phone: "", provenance: "", sourceUrl: "" });
+              refresh();
+              toast("Contact added");
+            } catch (x: any) {
+              toast(x.message, "error");
+            }
+          }}
+        >
+          <div className="grid-2">
+            <TextField label="Name" value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} />
+            <TextField label="Title" value={contact.title} onChange={(e) => setContact({ ...contact, title: e.target.value })} />
+            <TextField label="Email" type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} />
+            <TextField label="Phone" value={contact.phone} onChange={(e) => setContact({ ...contact, phone: e.target.value })} />
+          </div>
+          <TextField label="Provenance (required)" required value={contact.provenance} onChange={(e) => setContact({ ...contact, provenance: e.target.value })} hint="e.g. “Published on official partnerships page, reviewed 2026-11-17”" />
+          <div className="grid-3">
+            {(["emailPermission", "smsPermission", "phonePermission"] as const).map((k) => (
+              <SelectField key={k} label={k.replace("Permission", "").toUpperCase() + " permission"} value={(contact as any)[k]} onChange={(e) => setContact({ ...contact, [k]: e.target.value })}>
+                <option value="unknown">Unknown</option>
+                <option value="permitted">Permitted (recorded)</option>
+                <option value="opted_out">Opted out</option>
+              </SelectField>
+            ))}
+          </div>
+          <button className="btn btn-ghost btn-sm">Add contact</button>
+        </form>
+      </section>
+
+      <section className="panel">
+        <h3 style={{ fontSize: "1rem" }}>Activity</h3>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              await api.post(`/internal/research/${id}/activities`, activity);
+              setActivity({ ...activity, summary: "" });
+              refresh();
+              toast("Activity logged");
+            } catch (x: any) {
+              toast(x.message, "error");
+            }
+          }}
+        >
+          <div className="grid-2">
+            <SelectField label="Type" value={activity.kind} onChange={(e) => setActivity({ ...activity, kind: e.target.value })}>
+              {["note", "email", "call", "sms", "meeting", "demo"].map((k) => <option key={k}>{k}</option>)}
+            </SelectField>
+            <TextField label="What happened" required value={activity.summary} onChange={(e) => setActivity({ ...activity, summary: e.target.value })} />
+          </div>
+          {activity.kind !== "note" ? <Checkbox label="Move to Contacted (if earlier stage)" checked={activity.advanceToContacted} onChange={(v) => setActivity({ ...activity, advanceToContacted: v })} /> : null}
+          <button className="btn btn-dark btn-sm">Mark activity</button>
+        </form>
+        <ul style={{ marginTop: 12 }}>
+          {data.activities.map((a: any) => <li key={a.id} style={{ fontSize: ".9rem" }}>{new Date(a.occurred_at).toLocaleString()} · {a.kind} · {a.summary} <span className="muted">({a.user_email})</span></li>)}
+        </ul>
+        {data.drafts.length ? (
+          <>
+            <h4 style={{ fontSize: ".95rem", marginTop: 12 }}>Saved drafts</h4>
+            <ul>{data.drafts.map((d: any) => <li key={d.id} style={{ fontSize: ".9rem" }}>v{d.version} · {d.channel} · {OUTREACH_OBJECTIVES[d.objective as keyof typeof OUTREACH_OBJECTIVES] ?? d.objective} · {d.generator === "ai" ? `AI (${d.model})` : "Example template"} · {new Date(d.created_at).toLocaleDateString()}</li>)}</ul>
+          </>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function ProspectEditor({ id, prospect, onSaved }: { id: string; prospect: any; onSaved: () => void }) {
+  const toast = useToast();
+  const [f, setF] = useState({ stage: prospect?.stage ?? "researching", nextAction: prospect?.next_action ?? "", dueDate: prospect?.due_date?.slice(0, 10) ?? "", notes: prospect?.notes ?? "", ownerEmail: prospect?.owner_email ?? "" });
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        try {
+          await api.put(`/internal/prospects/${id}`, f);
+          toast("Pipeline updated");
+          onSaved();
+        } catch (x: any) {
+          toast(x.message, "error");
+        }
+      }}
+    >
+      <div className="grid-2">
+        <SelectField label="Stage" value={f.stage} onChange={(e) => setF({ ...f, stage: e.target.value })}>
+          {PIPELINE_STAGES.map((s) => <option key={s} value={s}>{PIPELINE_LABELS[s]}</option>)}
+        </SelectField>
+        <TextField label="Owner (admin email)" value={f.ownerEmail} onChange={(e) => setF({ ...f, ownerEmail: e.target.value })} />
+        <TextField label="Next action" value={f.nextAction} onChange={(e) => setF({ ...f, nextAction: e.target.value })} />
+        <TextField label="Due date" type="date" value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} />
+      </div>
+      <TextArea label="Notes" rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
+      {f.stage === "do_not_contact" ? <div className="alert alert-warning" style={{ marginBottom: 10 }}>Do Not Contact suppresses outreach drafting for the whole organization.</div> : null}
+      <button className="btn btn-dark btn-sm">Save pipeline</button>
+    </form>
+  );
+}
+
+function AddResearch({ onDone }: { onDone: (id: string) => void }) {
+  const [f, setF] = useState<any>({ displayName: "", primaryDomain: "", country: ["CA"], prospectTypes: ["employer"], region: "", industry: "", audience: "", programName: "", summary: "", programUrl: "", officialWebsite: "", sourceUrl: "", reviewedAt: new Date().toISOString().slice(0, 10) });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [err, setErr] = useState<unknown>(null);
+  const toggle = (k: string, v: string) => setF({ ...f, [k]: f[k].includes(v) ? f[k].filter((x: string) => x !== v) : [...f[k], v] });
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setErr(null);
+        try {
+          const r = await api.post("/internal/research", {
+            displayName: f.displayName,
+            primaryDomain: f.primaryDomain || undefined,
+            country: f.country,
+            prospectTypes: f.prospectTypes,
+            region: f.region,
+            industry: f.industry,
+            audience: f.audience,
+            program: f.programName ? { name: f.programName, summary: f.summary, programUrl: f.programUrl || undefined, officialWebsite: f.officialWebsite || undefined } : undefined,
+            source: f.sourceUrl ? { url: f.sourceUrl, reviewedAt: f.reviewedAt, title: "", note: "" } : undefined,
+          });
+          onDone(r.id);
+        } catch (x) {
+          setErr(x);
+          setErrors((x as ApiError).fields ?? {});
+        }
+      }}
+    >
+      {err ? <ErrorAlert error={err} /> : null}
+      <TextField label="Organization" required value={f.displayName} error={errors.displayName} onChange={(e) => setF({ ...f, displayName: e.target.value })} />
+      <TextField label="Primary domain" value={f.primaryDomain} error={errors.primaryDomain} onChange={(e) => setF({ ...f, primaryDomain: e.target.value })} hint="Used for deduplication." />
+      <fieldset style={{ border: 0, padding: 0 }}>
+        <legend style={{ fontWeight: 600 }}>Country</legend>
+        <Checkbox label="Canada" checked={f.country.includes("CA")} onChange={() => toggle("country", "CA")} />
+        <Checkbox label="USA" checked={f.country.includes("US")} onChange={() => toggle("country", "US")} />
+      </fieldset>
+      <fieldset style={{ border: 0, padding: 0 }}>
+        <legend style={{ fontWeight: 600 }}>Classification</legend>
+        {PROSPECT_TYPES.map((t) => <Checkbox key={t} label={PROSPECT_TYPE_LABELS[t]} checked={f.prospectTypes.includes(t)} onChange={() => toggle("prospectTypes", t)} />)}
+      </fieldset>
+      <div className="grid-2">
+        <TextField label="Province / state" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} />
+        <TextField label="Industry" value={f.industry} onChange={(e) => setF({ ...f, industry: e.target.value })} />
+      </div>
+      <TextField label="Program name" value={f.programName} onChange={(e) => setF({ ...f, programName: e.target.value })} />
+      <TextArea label="Publicly described purpose" value={f.summary} onChange={(e) => setF({ ...f, summary: e.target.value })} rows={2} />
+      <div className="grid-2">
+        <TextField label="Official website" type="url" value={f.officialWebsite} onChange={(e) => setF({ ...f, officialWebsite: e.target.value })} />
+        <TextField label="Program page" type="url" value={f.programUrl} onChange={(e) => setF({ ...f, programUrl: e.target.value })} />
+        <TextField label="Reviewed source URL" type="url" value={f.sourceUrl} onChange={(e) => setF({ ...f, sourceUrl: e.target.value })} />
+        <TextField label="Reviewed on" type="date" value={f.reviewedAt} onChange={(e) => setF({ ...f, reviewedAt: e.target.value })} />
+      </div>
+      <button className="btn btn-primary">Save record</button>
+    </form>
+  );
+}
+
+function ImportResearch() {
+  const [csv, setCsv] = useState("");
+  const [res, setRes] = useState<any>(null);
+  const toast = useToast();
+  const qc = useQueryClient();
+  const header = "organization,program,operator,prospect_types,country,region,industry,audience,program_summary,official_website,program_url,contact_url,public_email,public_phone,source_url,reviewed_at\n";
+  async function run(dryRun: boolean) {
+    try {
+      const r = await api.post("/internal/research/import", { csv, dryRun });
+      setRes({ ...r, dryRun });
+      if (!dryRun) {
+        toast("Import complete — imported records are marked unverified until reviewed");
+        qc.invalidateQueries({ queryKey: ["internal", "research"] });
+      }
+    } catch (e: any) {
+      toast(e.message, "error");
+    }
+  }
+  return (
+    <div className="stack">
+      <p className="muted">Imports create research records only — never offers or partnerships. Duplicates (name, alias or domain) are skipped. <a download="research-template.csv" href={`data:text/csv;charset=utf-8,${encodeURIComponent(header)}`}>Template</a></p>
+      <label className="btn btn-ghost" style={{ width: "fit-content", cursor: "pointer" }}>
+        Choose CSV
+        <input type="file" className="sr-only" accept=".csv,text/csv" onChange={async (e) => { const f = e.target.files?.[0]; if (f) setCsv(await f.text()); }} />
+      </label>
+      <TextArea label="…or paste CSV" rows={6} value={csv} onChange={(e) => setCsv(e.target.value)} />
+      <div className="row">
+        <button className="btn btn-ghost" disabled={!csv} onClick={() => run(true)}>Preview</button>
+        <button className="btn btn-dark" disabled={!res?.dryRun} onClick={() => run(false)}>Import</button>
+      </div>
+      {res ? (
+        <ul>{res.results.map((r: any) => <li key={r.row}>Row {r.row}: {r.organization} — <strong>{r.status}</strong> {r.existing ? `(matches ${r.existing})` : ""} {r.errors ? JSON.stringify(r.errors) : ""}</li>)}</ul>
+      ) : null}
+    </div>
+  );
+}
+
+// ======================= Outreach =======================
+export function OutreachPage() {
+  useDocumentTitle("Sales Outreach");
+  const [sp] = useSearchParams();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const { data: me } = useMe();
+  const { data: list } = useQuery<any>({ queryKey: ["internal", "research", { pageSize: 200 }], queryFn: () => api.get("/internal/research?pageSize=200") });
+  const [orgId, setOrgId] = useState(sp.get("org") ?? "");
+  const { data: detail } = useQuery<any>({ queryKey: ["internal", "research-detail", orgId], queryFn: () => api.get(`/internal/research/${orgId}`), enabled: Boolean(orgId) });
+  const [opts, setOpts] = useState({ objective: "sell_program", channel: "email", persona: "", tone: "warm", senderName: me?.user?.display_name ?? "" });
+  const [sourceIds, setSourceIds] = useState<string[]>([]);
+  const [out, setOut] = useState<any>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!detail) return;
+    const types: string[] = detail.record.prospect_types;
+    setOpts((o) => ({ ...o, objective: types.includes("operator") ? "partnership" : types.includes("merchant") ? "recruit_merchant" : o.objective }));
+    setSourceIds(detail.sources.filter((s: any) => s.review_level === "page_reviewed").map((s: any) => s.id));
+    setOut(null);
+    setSavedId(null);
+  }, [detail]);
+  async function generate(ai = true) {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await api.post(`/internal/outreach/generate${ai ? "" : "?ai=0"}`, { researchOrgId: orgId, ...opts, sourceIds });
+      setOut(r);
+    } catch (e) {
+      setErr(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function save() {
+    try {
+      const r = await api.post("/internal/outreach/drafts", { researchOrgId: orgId, ...opts, content: out.content, generator: out.generator, model: out.model, sourceIds: out.sourceIds, sourceUrls: out.sourceUrls, parentId: savedId });
+      setSavedId(r.id);
+      toast(`Draft saved (version ${r.version})`);
+      qc.invalidateQueries({ queryKey: ["internal", "research-detail", orgId] });
+    } catch (e: any) {
+      toast(e.message, "error");
+    }
+  }
+  const dnc = detail?.prospect?.do_not_contact || detail?.prospect?.stage === "do_not_contact";
+  return (
+    <Wrap>
+      <PageHeader title="Sales Outreach" eyebrow="Admin Research & Sales" />
+      <div className="alert alert-info" style={{ marginBottom: 14, fontSize: ".88rem" }}>
+        Drafts only. Nothing is sent from Culturosity. You remain responsible for the final message, channel permission and your approved outreach policy.
+      </div>
+      <div className="grid-2" style={{ alignItems: "start" }}>
+        <section className="panel">
+          <SelectField label="Prospect" value={orgId} onChange={(e) => setOrgId(e.target.value)}>
+            <option value="">Choose a research record…</option>
+            {(list?.records ?? []).map((r: any) => <option key={r.id} value={r.id}>{r.display_name}</option>)}
+          </SelectField>
+          {dnc ? <div className="alert alert-error" style={{ marginBottom: 12 }}>This organization is marked Do Not Contact.</div> : null}
+          <div className="grid-2">
+            <SelectField label="Objective" value={opts.objective} onChange={(e) => setOpts({ ...opts, objective: e.target.value })}>
+              {Object.entries(OUTREACH_OBJECTIVES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </SelectField>
+            <SelectField label="Channel" value={opts.channel} onChange={(e) => setOpts({ ...opts, channel: e.target.value })}>
+              {Object.entries(OUTREACH_CHANNELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </SelectField>
+            <TextField label="Audience / persona" placeholder="e.g. HR benefits lead" value={opts.persona} onChange={(e) => setOpts({ ...opts, persona: e.target.value })} />
+            <SelectField label="Tone" value={opts.tone} onChange={(e) => setOpts({ ...opts, tone: e.target.value })}>
+              {["warm", "concise", "formal", "energetic"].map((t) => <option key={t}>{t}</option>)}
+            </SelectField>
+            <TextField label="Sender name" value={opts.senderName} onChange={(e) => setOpts({ ...opts, senderName: e.target.value })} />
+          </div>
+          {detail ? (
+            <fieldset style={{ border: 0, padding: 0 }}>
+              <legend style={{ fontWeight: 600 }}>Verified context to use</legend>
+              {detail.sources.map((s: any) => (
+                <Checkbox
+                  key={s.id}
+                  label={<span style={{ overflowWrap: "anywhere" }}>{s.url}</span>}
+                  hint={`${s.review_level.replace("_", " ")} · ${new Date(s.reviewed_at).toLocaleDateString()}`}
+                  checked={sourceIds.includes(s.id)}
+                  onChange={(v) => setSourceIds(v ? [...sourceIds, s.id] : sourceIds.filter((x) => x !== s.id))}
+                />
+              ))}
+            </fieldset>
+          ) : null}
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="btn btn-primary" disabled={!orgId || busy || dnc} onClick={() => generate(true)}>{busy ? "Generating…" : "Generate"}</button>
+            {out ? <button className="btn btn-ghost" disabled={busy} onClick={() => generate(true)}>Regenerate</button> : null}
+          </div>
+          {err ? <div style={{ marginTop: 10 }}><ErrorAlert error={err} /></div> : null}
+        </section>
+        <section className="panel">
+          {!out ? (
+            <EmptyState title="Your draft appears here">Choose a prospect and objective, then Generate.</EmptyState>
+          ) : (
+            <div className="stack">
+              <div className="spread">
+                <span className={`badge ${out.generator === "ai" ? "badge-new" : ""}`}>{out.label}</span>
+                {!out.aiConfigured ? <span className="muted" style={{ fontSize: ".8rem" }}>AI drafting not configured (ANTHROPIC_API_KEY)</span> : null}
+              </div>
+              {out.aiError ? <div className="alert alert-warning">AI drafting failed ({out.aiError}); showing the example template.</div> : null}
+              {out.content.warnings.map((w: string, i: number) => <div key={i} className="alert alert-warning">{w}</div>)}
+              {out.content.sections.map((s: any, i: number) => (
+                <div key={s.key + i} style={{ borderTop: i ? "1px solid #eee" : 0, paddingTop: i ? 12 : 0 }}>
+                  <div className="spread">
+                    <strong>{s.title}</strong>
+                    <button className="btn btn-ghost btn-sm" onClick={async () => { await navigator.clipboard.writeText((s.subject ? `Subject: ${s.subject}\n\n` : "") + s.body); toast("Copied"); }}>Copy</button>
+                  </div>
+                  {s.subject !== undefined ? (
+                    <TextField label="Subject" value={s.subject ?? ""} onChange={(e) => { const n = structuredClone(out); n.content.sections[i].subject = e.target.value; setOut(n); }} />
+                  ) : null}
+                  <TextArea label="Body" rows={Math.min(14, Math.max(4, s.body.split("\n").length + 1))} value={s.body} onChange={(e) => { const n = structuredClone(out); n.content.sections[i].body = e.target.value; setOut(n); }} />
+                </div>
+              ))}
+              <div className="muted" style={{ fontSize: ".82rem" }}>Sources: {out.sourceUrls.join(", ") || "none selected"}</div>
+              <div className="row">
+                <button className="btn btn-dark" onClick={save}>Save Draft</button>
+                <Link className="btn btn-ghost" to={`${B}/research?open=${orgId}`}>Mark Activity</Link>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    </Wrap>
+  );
+}
+
+// ======================= Pipeline =======================
+export function PipelinePage() {
+  useDocumentTitle("Pipeline");
+  const { data, isLoading, error } = useQuery<any>({ queryKey: ["internal", "pipeline"], queryFn: () => api.get("/internal/pipeline") });
+  const grouped = useMemo(() => {
+    const m: Record<string, any[]> = {};
+    for (const s of PIPELINE_STAGES) m[s] = [];
+    for (const p of data?.prospects ?? []) m[p.stage]?.push(p);
+    return m;
+  }, [data]);
+  return (
+    <Wrap>
+      <PageHeader title="Pipeline" eyebrow="Admin Research & Sales" />
+      <p className="muted">Generating a draft never moves a prospect. Stages change when you update them or log a real contact activity.</p>
+      {error ? <ErrorAlert error={error} /> : null}
+      {isLoading ? <Spinner /> : null}
+      <div className="kanban">
+        {PIPELINE_STAGES.map((s) => (
+          <div key={s} className="col">
+            <h4><span>{PIPELINE_LABELS[s]}</span><span>{grouped[s].length}</span></h4>
+            {grouped[s].map((p) => (
+              <Link key={p.id} to={`${B}/research?open=${p.research_org_id}`} className="card" style={{ display: "block", color: "inherit", textDecoration: "none" }}>
+                <strong>{p.display_name}</strong>
+                {p.next_action ? <div className="muted">Next: {p.next_action}</div> : null}
+                {p.due_date ? <div className="muted">Due {new Date(p.due_date).toLocaleDateString()}</div> : null}
+                {p.owner_email ? <div className="muted">Owner: {p.owner_email}</div> : null}
+              </Link>
+            ))}
+          </div>
+        ))}
+      </div>
+    </Wrap>
+  );
+}
+
+// ======================= Demo guide =======================
+export function DemoGuidePage() {
+  useDocumentTitle("Demo Guide");
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const steps = [
+    ["Introduce Culturosity's own perks experience", "/perks", "Open Culturosity Perks; point out value labels, dates and the New / A–Z / Favourites controls."],
+    ["Browse a company program and open a perk", "/app/northwind-demo", "Northwind Demo Co. — open Cedar Lane Fitness."],
+    ["Show dates, offer value, redemption instructions and member card", "/app/northwind-demo", "Generate a member code and verify it on /provider/verify as the provider persona."],
+    ["Submit a clearly labelled sample offer and show its automatic appearance", "/app/northwind-demo/submit-perk", "Publish, then select View Perk — no copying into the catalogue."],
+    ["Switch to company administration: member access and measured reporting", "/app/northwind-demo/manage", "Dashboard, Members & roles, Reports with definitions."],
+    ["Explain Self-Service, Launch with Culturosity and Fully Managed", "/services", "No invented pricing — Request a Proposal."],
+    ["Close with a demo booking or proposal request", "/services#request", "Use the configured booking link or the proposal form."],
+  ];
+  return (
+    <Wrap>
+      <PageHeader title="Demo Guide" eyebrow="Admin Research & Sales">
+        <button
+          className="btn btn-ghost"
+          disabled={busy}
+          onClick={async () => {
+            if (!confirm("Reset all demo workspaces to their starting state? Real data is not affected.")) return;
+            setBusy(true);
+            try {
+              await api.post("/internal/demo/reset");
+              toast("Demo data reset");
+            } catch (e: any) {
+              toast(e.message, "error");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "Resetting…" : "Reset demo data"}
+        </button>
+      </PageHeader>
+      <div className="alert alert-warning" style={{ marginBottom: 14 }}>
+        Use only the isolated demo organizations (Northwind Demo Co., Harbour Demo Union, Culturosity Perks — Demo). Demo offers are fictional and never grant a real merchant benefit.
+      </div>
+      <ol style={{ display: "grid", gap: 12, paddingLeft: 0, listStyle: "none" }}>
+        {steps.map(([t, to, d], i) => (
+          <li key={t} className="panel">
+            <div className="spread">
+              <div>
+                <div className="eyebrow">Step {i + 1}</div>
+                <h3 style={{ margin: "4px 0" }}>{t}</h3>
+                <p className="muted" style={{ margin: 0 }}>{d}</p>
+              </div>
+              <Link className="btn btn-dark" to={to}>Open</Link>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <p className="muted" style={{ fontSize: ".88rem" }}>Demo personas (local demo): member@demo.culturosity.test, admin@northwind.example, provider@demo.culturosity.test — see README.</p>
+    </Wrap>
+  );
+}
+
+// ======================= Service queue =======================
+export function ServiceQueuePage() {
+  useDocumentTitle("Service queue");
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [status, setStatus] = useState("");
+  const { data, isLoading, error } = useQuery<any>({ queryKey: ["internal", "services", status], queryFn: () => api.get(`/internal/service-requests${qs({ status })}`) });
+  const [open, setOpen] = useState<any>(null);
+  return (
+    <Wrap>
+      <PageHeader title="Service queue" eyebrow="Culturosity Management Services" />
+      <div className="segmented" role="group" aria-label="Status" style={{ marginBottom: 14, flexWrap: "wrap" }}>
+        {["", "new", "contacted", "scoping", "proposal_sent", "won", "closed"].map((s) => (
+          <button key={s} aria-pressed={status === s} onClick={() => setStatus(s)}>{s ? s.replace("_", " ") : "All"}</button>
+        ))}
+      </div>
+      {error ? <ErrorAlert error={error} /> : null}
+      {isLoading ? <Spinner /> : null}
+      {data && !data.requests.length ? <EmptyState title="No requests" /> : null}
+      {data?.requests.length ? (
+        <div className="table-wrap">
+          <table className="data">
+            <thead><tr><th>Organization</th><th>Approach</th><th>Needs</th><th>Status</th><th>Owner</th><th>Received</th></tr></thead>
+            <tbody>
+              {data.requests.map((r: any) => (
+                <tr key={r.id} className="clickable" onClick={() => setOpen(r)}>
+                  <td><strong>{r.organization_name}</strong>{r.is_demo ? <span className="badge badge-demo" style={{ marginLeft: 6 }}>Demo</span> : null}<div className="muted" style={{ fontSize: ".82rem" }}>{r.contact_name} · {r.contact_email}</div></td>
+                  <td>{r.approach?.replace("_", " ")}</td>
+                  <td style={{ fontSize: ".85rem" }}>{r.service_needs.join("; ")}</td>
+                  <td><span className="badge">{r.status.replace("_", " ")}</span></td>
+                  <td>{r.owner_email ?? "—"}</td>
+                  <td>{new Date(r.created_at).toLocaleDateString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      <Drawer open={Boolean(open)} onClose={() => setOpen(null)} title={open?.organization_name ?? "Request"}>
+        {open ? (
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              try {
+                await api.patch(`/internal/service-requests/${open.id}`, Object.fromEntries(fd.entries()));
+                toast("Request updated");
+                qc.invalidateQueries({ queryKey: ["internal", "services"] });
+                setOpen(null);
+              } catch (x: any) {
+                toast(x.message, "error");
+              }
+            }}
+          >
+            <div className="panel" style={{ marginBottom: 14 }}>
+              <p><strong>Contact:</strong> {open.contact_name} · <a href={`mailto:${open.contact_email}`}>{open.contact_email}</a></p>
+              <p><strong>Members:</strong> {open.approx_member_count ?? "—"} · <strong>Coverage:</strong> {open.coverage || "—"} · <strong>Launch:</strong> {open.target_launch || "—"}</p>
+              <p style={{ whiteSpace: "pre-line" }}>{open.message}</p>
+            </div>
+            <SelectField label="Status" name="status" defaultValue={open.status}>
+              {["new", "contacted", "scoping", "proposal_sent", "won", "closed"].map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
+            </SelectField>
+            <TextField label="Owner (admin email)" name="ownerEmail" defaultValue={open.owner_email ?? ""} />
+            <TextField label="Next step" name="nextStep" defaultValue={open.next_step} />
+            <TextArea label="Notes" name="notes" defaultValue={open.notes} />
+            <button className="btn btn-dark">Save</button>
+          </form>
+        ) : null}
+      </Drawer>
+    </Wrap>
+  );
+}
+
+// ======================= Client workspaces / entitlements =======================
+export function WorkspacesPage() {
+  useDocumentTitle("Client workspaces");
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { data: me } = useMe();
+  const { data, isLoading, error } = useQuery<any>({ queryKey: ["internal", "orgs"], queryFn: () => api.get("/internal/orgs") });
+  const superAdmin = me?.grants?.includes("super_admin");
+  return (
+    <Wrap>
+      <PageHeader title="Client workspaces" eyebrow="Operations" />
+      {!superAdmin ? <div className="alert alert-info" style={{ marginBottom: 12 }}>Sales admins see demo workspaces only.</div> : null}
+      {error ? <ErrorAlert error={error} /> : null}
+      {isLoading ? <Spinner /> : null}
+      {data ? (
+        <div className="table-wrap">
+          <table className="data">
+            <thead><tr><th>Workspace</th><th>Members</th><th>Live offers</th><th>Delivery</th><th>Licensed Culturosity programs</th><th /></tr></thead>
+            <tbody>
+              {data.orgs.map((o: any) => (
+                <tr key={o.id}>
+                  <td><strong>{o.name}</strong> {o.is_demo ? <span className="badge badge-demo">Demo</span> : null}<div className="muted" style={{ fontSize: ".8rem" }}>{o.kind}</div></td>
+                  <td>{o.members}</td>
+                  <td>{o.offers}</td>
+                  <td>{o.delivery_preference?.replace("_", " ") ?? "—"}</td>
+                  <td>
+                    {o.kind === "client" && superAdmin
+                      ? data.culturosityPrograms.map((p: any) => {
+                          const has = o.entitlements.some((e: any) => e.source_program_id === p.id);
+                          return (
+                            <label key={p.id} className="check" style={{ minHeight: 32, padding: 0 }}>
+                              <input
+                                type="checkbox"
+                                checked={has}
+                                onChange={async () => {
+                                  try {
+                                    await api.post("/internal/entitlements", { orgId: o.id, sourceProgramId: p.id, revoke: has });
+                                    qc.invalidateQueries({ queryKey: ["internal", "orgs"] });
+                                    toast(has ? "Entitlement revoked" : "Entitlement granted");
+                                  } catch (e: any) {
+                                    toast(e.message, "error");
+                                  }
+                                }}
+                              />
+                              <span style={{ fontSize: ".85rem" }}>{p.name}</span>
+                            </label>
+                          );
+                        })
+                      : "—"}
+                  </td>
+                  <td><Link className="btn btn-ghost btn-sm" to={`/app/${o.slug}/manage`}>Open</Link></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </Wrap>
+  );
+}
+
+export function AccessSettingsPage() {
+  useDocumentTitle("Access settings");
+  const { data: me } = useMe();
+  const toast = useToast();
+  const [f, setF] = useState({ currentCode: "", newCode: "" });
+  if (!me?.grants?.includes("super_admin")) return <Wrap><EmptyState title="Super admin only" /></Wrap>;
+  return (
+    <Wrap>
+      <PageHeader title="Access settings" eyebrow="Operations" />
+      <form
+        className="panel"
+        style={{ maxWidth: 520 }}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          try {
+            await api.post("/internal/gate/rotate", f);
+            setF({ currentCode: "", newCode: "" });
+            toast("Access code rotated. Other unlocked sessions were locked.");
+          } catch (x: any) {
+            toast(x.message, "error");
+          }
+        }}
+      >
+        <h2 style={{ fontSize: "1.1rem" }}>Rotate the numerical access code</h2>
+        <p className="muted" style={{ fontSize: ".88rem" }}>The code is stored only as a hash. Rotation takes effect immediately; no rebuild needed.</p>
+        <TextField label="Current code" type="password" inputMode="numeric" autoComplete="off" value={f.currentCode} onChange={(e) => setF({ ...f, currentCode: e.target.value.replace(/\D/g, "") })} />
+        <TextField label="New code (6–20 digits)" type="password" inputMode="numeric" autoComplete="off" value={f.newCode} onChange={(e) => setF({ ...f, newCode: e.target.value.replace(/\D/g, "") })} />
+        <button className="btn btn-dark">Rotate code</button>
+      </form>
+    </Wrap>
+  );
+}
+
+export function useInternalParams() {
+  return useParams();
+}

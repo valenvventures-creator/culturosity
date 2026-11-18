@@ -57,6 +57,7 @@ export async function createPgliteDb(dataDir: string | null): Promise<Db> {
   // Variable specifier keeps bundlers from pulling the local-only engine into production functions.
   const modName = "@electric-sql/pglite";
   const { PGlite } = await import(/* @vite-ignore */ modName);
+  if (dataDir) await (await import("node:fs/promises")).mkdir(dataDir, { recursive: true });
   const db = dataDir ? new PGlite(dataDir) : new PGlite();
   await db.waitReady;
   const run = async <T>(q: { query: (s: string, p?: unknown[]) => Promise<any> }, sql: string, params?: unknown[]) => {
