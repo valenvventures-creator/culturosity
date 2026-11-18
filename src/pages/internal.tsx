@@ -45,7 +45,7 @@ export function InternalLayout() {
   return (
     <AppShell
       sections={[
-        { title: "Internal", items: [{ to: `${B}/overview`, label: "Overview" }, { to: `${B}/research`, label: "Research Directory" }, { to: `${B}/outreach`, label: "Sales Outreach" }, { to: `${B}/pipeline`, label: "Pipeline" }, { to: `${B}/demo-guide`, label: "Demo Guide" }, { to: `${B}/preview`, label: "Preview" }] },
+        { title: "Internal", items: [{ to: `${B}/overview`, label: "Overview" }, { to: `${B}/research`, label: "Research Directory" }, { to: `${B}/outreach`, label: "Sales Outreach" }, { to: `${B}/pipeline`, label: "Pipeline" }, { to: `${B}/demo-guide`, label: "Demo Guide" }, { to: `${B}/preview`, label: "Preview" }, { to: `${B}/tutorial`, label: "Tutorial" }] },
         // Salespeople see research and sales only; the rest is for super admins.
         me.grants?.includes("super_admin")
           ? { title: "Operations", items: [{ to: `${B}/services`, label: "Service queue" }, { to: `${B}/workspaces`, label: "Client workspaces" }, { to: `/app/culturosity/manage`, label: "Culturosity catalogue" }, { to: `${B}/team`, label: "Sales team" }, { to: `${B}/settings`, label: "Access settings" }] }
@@ -1630,3 +1630,5 @@ export function SalesTeamPage() {
     </Wrap>
   );
 }
+
+export { TutorialPage } from "../components/Tutorial";
