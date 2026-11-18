@@ -1,0 +1,12 @@
+node_modules
+dist
+.data
+.env
+.env.*
+!.env.example
+.netlify
+coverage
+test-results
+playwright-report
+*.log
+.DS_Store
