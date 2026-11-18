@@ -2165,6 +2165,15 @@ table.data tr.clickable {
   font-weight: 500;
   letter-spacing: 0.04em;
   padding: 8px 0 12px;
+  position: relative;
+}
+.phone-logo {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-58%);
+  height: 30px;
+  width: auto;
 }
 .phone-tabs {
   background: #e5e5ea;
