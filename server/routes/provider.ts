@@ -73,7 +73,16 @@ providerRoutes.post("/provider/verify", async (c) => {
       [hashValue],
     );
     const tok = t.rows[0];
-    if (!tok) return { result: "not_found" as const, message: "This code was not recognised." };
+    if (!tok) {
+      // Promo codes and perk QR links are used at checkout, not here. Say so instead of a bare "not recognised".
+      const looksLikeMemberCode = Boolean(m) || /^[2-9A-HJKMNP-Z]{10}$/.test(normaliseCode(raw));
+      return {
+        result: "not_found" as const,
+        message: looksLikeMemberCode
+          ? "This code was not recognised. Check it with the member, or ask them to get a new one-time code."
+          : "That isn't a member's one-time code. Promo codes (like CULTURE10) and a perk's own QR code are used at your checkout, not here. Ask the member for their one-time code — 10 characters, like ABCDE-FGHJK.",
+      };
+    }
     if (!allowed.has("*") && !allowed.has(tok.provider_id))
       return { result: "wrong_provider" as const, message: "This code is for a different provider. You are not authorised to verify it." };
     if (scannedProviderRef && scannedProviderRef !== tok.provider_ref) return { result: "not_found" as const, message: "This code was not recognised." };

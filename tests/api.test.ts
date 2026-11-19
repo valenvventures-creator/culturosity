@@ -245,6 +245,11 @@ describe("6. provider scope and atomic redemption", () => {
     // Usage limit (1) now reached: new codes are refused.
     expect((await member.post("/redemption-tokens", { programId: cedar.program_id, perkId: cedar.id })).status).toBe(409);
     expect((await prov.post("/provider/verify", { code: "ZZZZZ-ZZZZZ" })).json.result).toBe("not_found");
+    // A promo code or a perk link gets a helpful explanation instead of a bare "not recognised".
+    const promo = (await prov.post("/provider/verify", { code: "CULTURE10" })).json;
+    expect(promo.result).toBe("not_found");
+    expect(promo.message).toContain("Promo codes");
+    expect((await prov.post("/provider/verify", { code: "https://www.blufish.ca" })).json.message).toContain("one-time code");
   });
 });
 
