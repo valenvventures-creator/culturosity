@@ -97,6 +97,7 @@ const TOC: [string, string][] = [
   ["preview", "Preview"],
   ["services", "Service queue"],
   ["routine", "A typical week"],
+  ["joining", "How clients and members join"],
   ["limits", "What only the owner can do"],
   ["help", "Troubleshooting"],
   ["glossary", "Glossary"],
@@ -488,6 +489,37 @@ export function TutorialPage() {
           </section>
 
           {/* ---------------- Limits ---------------- */}
+          <section id="joining" className="tut-section panel" aria-labelledby="joining-h">
+            <div className="eyebrow">Part 9b</div>
+            <h2 id="joining-h">How clients and members join</h2>
+            <p className="tut-intro">
+              There is <strong>no public sign-up</strong>. Culturosity sets up each company's program, and only that company's people become members. Promo codes,
+              Use Perk links and member-card QR codes are visible to members only.
+            </p>
+            <Steps>
+              <li>
+                <strong>The prospect asks for a program</strong> — usually by filling in <strong>Request a Proposal</strong> with you at the end of a demo. It lands in the
+                Service queue.
+              </li>
+              <li>
+                <strong>The Culturosity owner creates the company's workspace</strong> and makes the client's contact its Owner. Salespeople and companies can't create
+                workspaces themselves.
+              </li>
+              <li>
+                <strong>The company adds its people</strong> in Manage → Members &amp; roles: by emailed invitation, by approving its work-email domain (staff then join
+                with their work email), or by importing a member list.
+              </li>
+              <li>
+                <strong>Members create their account</strong> from their invitation link — or with their work email if the domain is approved — and then see the
+                company's perks, including the Culturosity Perks the owner licenses to that company.
+              </li>
+            </Steps>
+            <Tip>
+              If a prospect asks “how do I sign up?”, the answer is: “Request a Proposal and we'll set up your program — then your people join through your
+              invitation.” Don't send them to the Sign In page.
+            </Tip>
+          </section>
+
           <section id="limits" className="tut-section panel" aria-labelledby="limits-h">
             <div className="eyebrow">Part 10</div>
             <h2 id="limits-h">What only the owner can do</h2>
@@ -496,7 +528,8 @@ export function TutorialPage() {
               <li>Changing the access code or any site settings</li>
               <li>Adding or removing salespeople</li>
               <li>Managing the Culturosity Perks catalogue or any company workspace</li>
-              <li>Creating, pausing or deleting company workspaces</li>
+              <li>Creating (setting up), pausing or deleting company workspaces</li>
+              <li>Making someone an Owner of a company workspace</li>
             </ul>
           </section>
 
@@ -511,6 +544,8 @@ export function TutorialPage() {
                 ["I can't find an organization", "Clear the search box and set the filters back to “Any”. It may not be in the directory yet — add it."],
                 ["Generate is greyed out", "Choose a prospect first. If it's still greyed out, the organization is marked Do Not Contact."],
                 ["My sign-up link doesn't work", "Links work once and expire after 7 days. Ask the owner for a new one."],
+                ["A prospect says they can't create an account", "That's expected — accounts are by invitation only. Send them Request a Proposal; once their program is set up, their people join through the company's invitation or work email."],
+                ["“Accounts are by invitation only” when someone signs up", "They must use the exact email their invitation was sent to (or an approved work email). Ask the company admin to resend the invitation if needed."],
                 ["I forgot my password", "Use “Forgot password?” on the Sign In page. If no email arrives, ask the owner."],
                 ["I don't see Admin Research & Sales in my menu", "Make sure you're signed in with the email your sign-up link was sent to."],
               ]}
@@ -533,6 +568,8 @@ export function TutorialPage() {
                 ["Stage", "A prospect's step in the Pipeline, from Researching to Won."],
                 ["Draft", "A message created in Sales Outreach. Only a starting point — you check and send it yourself."],
                 ["Service request", "A Request a Proposal form submitted on the website."],
+                ["Invitation-only", "Nobody can create an account on their own. Accounts come from a company invitation, an approved work-email domain, a salesperson sign-up link, or the owner."],
+                ["Company workspace", "A company's private perks program on Culturosity — its own members, perks and admin area. Set up by the Culturosity owner."],
                 ["Access code", "The numerical code that unlocks Admin Research & Sales for a session."],
                 ["Owner / super admin", "The Culturosity account holder who manages settings, the catalogue and the sales team."],
               ]}

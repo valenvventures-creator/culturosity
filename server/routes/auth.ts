@@ -65,6 +65,31 @@ authRoutes.post("/auth/signup", async (c) => {
   const { db, config } = c.get("deps");
   await rateLimit(db, `signup:${sourceHash(c)}`, 10, 3600);
   const input = await body<{ email: string; password: string; displayName: string }>(c, signUpSchema);
+  // Invitation-only: an account can be created only for an open invitation to this email, or a
+  // work email whose domain an organization has approved. There is no open public sign-up.
+  const inviteToken = String(((await c.req.json().catch(() => ({}))) as { inviteToken?: string }).inviteToken ?? ""); // Hono caches the parsed body
+  const invited = inviteToken
+    ? await db.query(
+        `select 1 from invitations i join organizations o on o.id = i.org_id and o.status = 'active'
+          where i.token_hash = $1 and lower(i.email) = lower($2) and i.accepted_at is null and i.revoked_at is null and i.expires_at > now()`,
+        [sha256(inviteToken), input.email],
+      )
+    : { rows: [] };
+  const domain = input.email.split("@")[1]?.toLowerCase() ?? "";
+  const enrolled = invited.rows.length
+    ? { rows: [1] }
+    : await db.query(
+        `select 1 from enrollment_rules r join organizations o on o.id = r.org_id and o.status = 'active'
+          where r.revoked_at is null and r.email_domain = $1 limit 1`,
+        [domain],
+      );
+  if (!invited.rows.length && !enrolled.rows.length)
+    throw new AppError(
+      403,
+      "invitation_required",
+      "Accounts are by invitation only. Open the invitation link from your organization, or ask your program administrator to add you. If your organization lets staff join with their work email, use that email address.",
+      { email: "Use the email address your invitation was sent to, or your work email" },
+    );
   const exists = await db.query(`select 1 from app_users where lower(email) = lower($1)`, [input.email]);
   if (exists.rows.length) {
     // Do not reveal account existence; behave as if a verification email was sent.

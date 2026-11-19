@@ -8,6 +8,8 @@ Culturosity is a multi-tenant affinity-program platform with three commercial pu
 2. **Affinity Program Management** — private, branded program workspaces for employers, unions and associations.
 3. **Culturosity Management Services** — consulting and managed delivery (Self-Service, Launch with Culturosity, Fully Managed by Culturosity), sold via *Request a Proposal* (no invented pricing).
 
+Accounts are **invitation-only**: people join through a company invitation or an approved work-email domain (plus salesperson sign-up links and accounts created by Culturosity). Company workspaces are created by Culturosity super admins only.
+
 It also includes an internal **Admin Research & Sales** area (numerical-code gate → research directory, AI-assisted outreach drafts, pipeline, demo guide).
 
 > This repository is an implementation, not a launched service. See [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md) for what is verified, what needs credentials, and what still needs external coordination.

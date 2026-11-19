@@ -117,7 +117,7 @@ export function HomePage() {
             </div>
             <div className="row" style={{ marginTop: 18 }}>
               <Link className="btn btn-dark" to="/services#request">Request a Proposal</Link>
-              <Link className="btn btn-ghost" to="/start">Start self-service</Link>
+              <Link className="btn btn-ghost" to="/services#request">Get started</Link>
             </div>
           </div>
         </div>
@@ -231,8 +231,8 @@ export function AffinityPage() {
                 </Link>
               ))
             ) : (
-              <Link className="btn btn-primary btn-lg" to={me?.user ? "/start" : "/auth/signin?next=/start"}>
-                Manage Your Program
+              <Link className="btn btn-primary btn-lg" to="/services#request">
+                Start Your Program
               </Link>
             )}
             <Link className="btn btn-lime btn-lg" to="/services#request">
@@ -274,7 +274,7 @@ function ApproachCards() {
   return (
     <div className="grid-3" style={{ marginTop: 16 }}>
       {[
-        ["Self-Service", "Your team runs the platform with our tools and guides.", ["Branded program portal", "Submit a Perk and bulk import", "Member invitations and reporting"], "/start", "Start self-service"],
+        ["Self-Service", "Your team runs the platform with our tools and guides.", ["Branded program portal", "Submit a Perk and bulk import", "Member invitations and reporting"], "/services#request", "Get started"],
         ["Launch with Culturosity", "We plan, build and launch the program with you, then hand it over.", ["Program strategy and planning", "Portal setup and offer population", "Launch materials for members"], "/services#request", "Request a Proposal"],
         ["Fully Managed by Culturosity", "We run the program day to day and keep it current.", ["Provider discovery and coordination", "Perk maintenance and renewals", "Ongoing reporting and improvement"], "/services#request", "Request a Proposal"],
       ].map(([t, d, items, to, cta], i) => (

@@ -62,7 +62,11 @@ export function SignInPage() {
       </form>
       <div className="spread" style={{ marginTop: 16, fontSize: ".92rem" }}>
         <Link to="/auth/forgot">Forgot password?</Link>
-        <Link to={`/auth/signup${sp.get("next") ? `?next=${encodeURIComponent(sp.get("next")!)}` : ""}`}>Create an account</Link>
+        {(sp.get("next") ?? "").startsWith("/auth/invite/") ? (
+          <Link to={`/auth/signup?next=${encodeURIComponent(sp.get("next")!)}`}>Create your account</Link>
+        ) : (
+          <span className="muted">New to Culturosity? Accounts are created through your organization’s invitation.</span>
+        )}
       </div>
       {cfg?.mode === "demo" ? (
         <div className="alert alert-info" style={{ marginTop: 18, fontSize: ".85rem" }}>
@@ -86,7 +90,8 @@ export function SignUpPage() {
     setBusy(true);
     setErr(null);
     try {
-      const r = await api.post("/auth/signup", f);
+      const inviteToken = (sp.get("next") ?? "").match(/^\/auth\/invite\/([A-Za-z0-9_-]+)/)?.[1];
+      const r = await api.post("/auth/signup", { ...f, ...(inviteToken ? { inviteToken } : {}) });
       setDone(r);
     } catch (x) {
       setErr(x);
@@ -104,7 +109,10 @@ export function SignUpPage() {
       </AuthCard>
     );
   return (
-    <AuthCard title="Create your account" sub="Members join through an invitation or their organization's approved enrollment.">
+    <AuthCard
+      title="Create your account"
+      sub="Accounts are by invitation only — for members of organizations with a Culturosity program. Use the email address your invitation was sent to, or your work email if your organization lets staff join that way."
+    >
       <form onSubmit={submit} noValidate>
         {err ? <ErrorAlert error={err} title="Couldn't create the account." /> : null}
         <div style={{ height: 12 }} />
@@ -484,17 +492,20 @@ export function StartWorkspacePage() {
   useEffect(() => {
     if (me?.user) setF((x) => ({ ...x, contactName: x.contactName || me.user!.display_name, contactEmail: x.contactEmail || me.user!.email }));
   }, [me?.user]);
-  if (me && !me.user)
+  if (me && !me.grants?.includes("super_admin"))
     return (
-      <AuthCard title="Create a company workspace" sub="Sign in or create an account first.">
+      <AuthCard title="Get your company's perks program" sub="Company workspaces are set up by Culturosity. Request a proposal and our team will set up your program with you.">
         <div className="row">
-          <Link className="btn btn-primary" to="/auth/signup?next=/start">Create account</Link>
-          <Link className="btn btn-ghost" to="/auth/signin?next=/start">Sign in</Link>
+          <Link className="btn btn-primary" to="/services#request">Request a Proposal</Link>
+          {!me.user ? <Link className="btn btn-ghost" to="/auth/signin?next=/start">Culturosity staff sign in</Link> : null}
         </div>
       </AuthCard>
     );
   return (
-    <AuthCard title="Create a company workspace" sub="Set up a private affinity program for your organization. You become its owner.">
+    <AuthCard
+      title="Create a company workspace"
+      sub="Set up a client's private affinity program. You become its first owner — then invite the client's contact as an Owner from Manage → Members & roles."
+    >
       <form
         noValidate
         onSubmit={async (e) => {

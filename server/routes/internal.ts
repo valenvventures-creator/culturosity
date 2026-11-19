@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv, Ctx } from "../context";
 import { requireGrant, requireUnlock, grantsFor } from "../lib/authz";
-import { requireVerified } from "../lib/auth";
 import { AppError, badRequest, conflict, forbidden, fromZod, notFound } from "../lib/errors";
 import { audit, rateLimit, sourceHash } from "../lib/security";
 import { hashSecret, verifySecret, randomToken, sha256 } from "../lib/crypto";
@@ -887,11 +886,9 @@ const onboardingSchema = z.object({
 });
 
 internalRoutes.post("/orgs", async (c) => {
-  const user = requireVerified(c);
+  // Company workspaces are created by Culturosity (super admins) only; companies request one.
+  const { user } = await requireGrant(c, ["super_admin"]);
   const { db } = c.get("deps");
-  // Sales team accounts are for research and sales only; creating workspaces is reserved for the owner.
-  const g = await grantsFor(db, user.id);
-  if (g.has("sales_admin") && !g.has("super_admin")) throw forbidden("Sales team accounts can’t create workspaces. Ask the Culturosity owner.");
   await rateLimit(db, `org-create:${user.id}`, 5, 86400);
   const parsed = onboardingSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) throw fromZod(parsed.error);

@@ -449,6 +449,31 @@ describe("accounts", () => {
     expect((await u.get("/orgs/northwind-demo/members")).status).toBe(403);
   });
 
+  it("sign-up is invitation-only, and only super admins create company workspaces", async () => {
+    await ctx.db.query(`delete from rate_limits`);
+    const anyone = client(app, "10.13.0.1");
+    const open = await anyone.post("/auth/signup", { email: "random.person@gmail-example.com", password: "a-strong-pass-1", displayName: "Random" });
+    expect(open.status).toBe(403);
+    expect(open.json.error.code).toBe("invitation_required");
+
+    // A company invitation lets that exact email create an account (and only that email).
+    const admin = client(app, "10.13.0.2");
+    await admin.signIn("admin@northwind.example");
+    await admin.post("/orgs/northwind-demo/invitations", { email: "invited.person@example.com", role: "member" });
+    const inv = await ctx.db.query<any>(`select body_text from email_outbox where to_email = 'invited.person@example.com' order by created_at desc limit 1`);
+    const inviteToken = inv.rows[0].body_text.match(/invite\/([A-Za-z0-9_-]+)/)[1];
+    expect((await anyone.post("/auth/signup", { email: "someone.else@example.com", password: "a-strong-pass-1", displayName: "X", inviteToken })).status).toBe(403);
+    const ok = await client(app, "10.13.0.3").post("/auth/signup", { email: "invited.person@example.com", password: "a-strong-pass-1", displayName: "Invited", inviteToken });
+    expect(ok.status).toBe(200);
+
+    // Company owners and members can't create workspaces; super admins can.
+    const body = { name: "Client Example Co", contactName: "Pat", contactEmail: "pat@client-example.com", deliveryPreference: "self_service" };
+    expect((await admin.post("/orgs", body)).status).toBe(404);
+    const sa = client(app, "10.13.0.4");
+    await sa.signIn("super@demo.culturosity.test");
+    expect((await sa.post("/orgs", body)).status).toBe(201);
+  });
+
   it("revoking a session signs that device out", async () => {
     const a = client(app, "10.5.0.1");
     await a.signIn("member@harbour.example");
@@ -659,7 +684,7 @@ describe("sales team sign-up links", () => {
     expect((await rep.get("/orgs/culturosity/members")).status).toBe(404);
     expect((await rep.patch("/orgs/northwind-demo", { welcomeCopy: "changed" })).status).toBe(404);
     expect((await rep.post("/orgs/northwind-demo/pause", { paused: true })).status).toBe(404);
-    expect((await rep.post("/orgs", { name: "Rep Co", contactName: "Riley", contactEmail: "riley.sales@example.com", deliveryPreference: "self_service" })).status).toBe(403);
+    expect((await rep.post("/orgs", { name: "Rep Co", contactName: "Riley", contactEmail: "riley.sales@example.com", deliveryPreference: "self_service" })).status).toBe(404);
 
     // The super admin sees them on the team and can remove them; access ends immediately.
     const team = (await sa.get("/internal/team")).json.team;

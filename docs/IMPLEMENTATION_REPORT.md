@@ -6,7 +6,7 @@ Date: 2026-11-18.
 
 | Area | Status |
 | --- | --- |
-| Accounts | Sign-up, email verification, sign-in, sign-out, password reset, invitations (7-day), session list and revocation, data export, account deactivation |
+| Accounts | **Invitation-only** sign-up (open company invitation for that email, or an approved company email domain; salesperson links and super-admin-created accounts), email verification, sign-in, sign-out, password reset, invitations (7-day), session list and revocation, data export, account deactivation |
 | Roles & tenancy | Org-scoped roles in `memberships`; internal grants in `platform_grants`; provider assignments. Every query is scoped on the server; missing access returns 404 |
 | Culturosity catalogue | Public teaser (no codes, URLs or instructions); member catalogue with search, Favourites / New / A–Z / Ending soon, category, city, region, country, online/in-person, offer type and date filters, grid/list view, empty and loading states |
 | Details | Value + Use Perk first, image, full details, event occurrences separate from the claim window, promo code copy, provider contact, Directions, member card with vertical MEMBER and QR |
@@ -50,6 +50,11 @@ Date: 2026-11-18.
 - **Admin Research & Sales → Preview** (salespeople and super admins): enter a prospect's company name, upload their logo, pick three colours (header & navigation, value badge, buttons & highlights — with presets and "Match colours to logo"), and write their About text and optional Privacy Policy / Terms links.
 - A tablet and a phone update live, side by side, showing Perks, Details (with the prospect's logo on the member card) and an About screen modelled on the Culturosity app's About page. Tapping through either device keeps both in step; "Presentation view" hides the controls and enlarges the devices.
 - Sample perks are a shuffled selection of real listings from the public catalogue. Everything else stays in the salesperson's browser (localStorage) — nothing is uploaded, saved on the server or published.
+
+### Invitation-only accounts; workspaces created by Culturosity
+
+- `POST /api/auth/signup` creates an account only when the email has an open invitation (the invitation token travels with the sign-up) or its domain has an active enrollment rule in an active workspace. Anyone else gets `403 invitation_required`. Sign In no longer shows a "Create an account" link except when arriving from an invitation.
+- `POST /api/orgs` (create a company workspace) is super-admin only (404 for everyone else). `/start` explains that Culturosity sets up workspaces and links to Request a Proposal; public "Start self-service" buttons now go to Request a Proposal. The creating super admin becomes the first owner and makes the client contact an Owner from Members & roles.
 
 ## Tests run
 
