@@ -85,7 +85,7 @@ The internal **Admin Research & Sales** entry is shown only to users with an int
 
 | Role | Where it lives | Can |
 | --- | --- | --- |
-| Culturosity super admin | `platform_grants` | Manage any workspace, Culturosity catalogue, entitlements, gate rotation, research/sales after unlock |
+| Culturosity super admin | `platform_grants` | Manage any workspace, Culturosity catalogue, entitlements, gate rotation, research/sales after unlock. Add more from **Sales team → Make super admin…**; the primary owner account can't be deleted or demoted by others |
 | Culturosity sales admin | `platform_grants` | Research/outreach after unlock; demo workspaces only |
 | Company owner / admin | `memberships.role` per org | Offers, members, roles (owners only for owner/admin), providers, branding, imports, reports, service requests |
 | Provider manager | `memberships` + `provider_assignments` | Create/edit offers for **assigned providers only**; verify redemptions for those providers |

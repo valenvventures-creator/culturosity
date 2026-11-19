@@ -540,7 +540,12 @@ export function TutorialPage() {
               <li>Managing the Culturosity Perks catalogue or any company workspace</li>
               <li>Creating (setting up), pausing or deleting company workspaces</li>
               <li>Making someone an Owner of a company workspace</li>
+              <li>Making a salesperson a super admin (Sales team → Make super admin…)</li>
             </ul>
+            <p className="muted">
+              Culturosity can have more than one super admin. Extra super admins can do everything above, but nobody can delete or demote the account marked
+              <strong> Primary owner</strong> on the Sales team page.
+            </p>
           </section>
 
           {/* ---------------- Troubleshooting ---------------- */}

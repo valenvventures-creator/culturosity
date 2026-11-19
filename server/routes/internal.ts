@@ -5,6 +5,7 @@ import { AppError, badRequest, conflict, forbidden, fromZod, notFound } from "..
 import { audit, rateLimit, sourceHash } from "../lib/security";
 import { hashSecret, verifySecret, randomToken, sha256 } from "../lib/crypto";
 import { getSetting, setSetting } from "../lib/settings";
+import { claimPrimaryIfUnset, primarySuperAdminId } from "../lib/primaryAdmin";
 import { emailSchema, researchOrgSchema, outreachRequestSchema, PIPELINE_STAGES, OUTREACH_OBJECTIVES } from "../../shared/schemas";
 import { parseCsvObjects, toCsv } from "../../shared/csv";
 import { templateOutreach, type OutreachContext } from "../lib/outreach";
@@ -940,7 +941,7 @@ internalRoutes.get("/internal/team", async (c) => {
         where accepted_at is null and revoked_at is null and expires_at > now() order by created_at desc`,
     ),
   ]);
-  return c.json({ team: team.rows, invitations: invites.rows });
+  return c.json({ team: team.rows, invitations: invites.rows, primaryId: await primarySuperAdminId(db) });
 });
 
 internalRoutes.post("/internal/team/invitations", async (c) => {
@@ -999,6 +1000,7 @@ internalRoutes.post("/internal/team/:userId/delete-account", async (c) => {
     [target],
   );
   if (!t.rows[0]) throw notFound("That super admin account wasn't found.");
+  if (target === (await primarySuperAdminId(db))) throw forbidden("This is the primary owner account. It can't be deleted.");
   // Never leave a workspace without an active owner.
   const solo = await db.query<{ name: string }>(
     `select o.name from memberships m join organizations o on o.id = m.org_id
@@ -1015,6 +1017,75 @@ internalRoutes.post("/internal/team/:userId/delete-account", async (c) => {
   return c.json({ ok: true });
 });
 
+async function confirmPassword(c: any, user: { id: string; email: string }) {
+  const { password } = (await c.req.json().catch(() => ({}))) as { password?: string };
+  const { passwordAuth } = await import("../lib/auth");
+  const ok = password ? await passwordAuth.verifyPassword(c.get("deps").db, user.email, password) : null;
+  if (!ok || ok.id !== user.id) throw badRequest("Your password is incorrect.", { password: "Incorrect password" });
+}
+
+/** Promote a salesperson to super admin (super admins only, password required). */
+internalRoutes.post("/internal/team/:userId/make-super-admin", async (c) => {
+  const { user } = await requireUnlock(c, ["super_admin"]);
+  const { db } = c.get("deps");
+  await rateLimit(db, `admin-promote:${user.id}`, 10, 3600);
+  const target = c.req.param("userId");
+  await confirmPassword(c, user);
+  const t = await db.query<{ email: string }>(
+    `select u.email from app_users u join platform_grants g on g.user_id = u.id and g.grant_name = 'sales_admin' and g.revoked_at is null
+      where u.id = $1 and u.status = 'active'`,
+    [target],
+  );
+  if (!t.rows[0]) throw notFound("Only a current salesperson can be made a super admin. Add them as a salesperson first.");
+  // Whoever adds the first additional super admin is recorded as the primary owner (if none is yet).
+  await claimPrimaryIfUnset(db, user.id);
+  await db.tx(async (q) => {
+    await q.query(`insert into platform_grants (user_id, grant_name, granted_by) values ($1,'super_admin',$2) on conflict do nothing`, [target, user.id]);
+    await q.query(`update platform_grants set revoked_at = now() where user_id = $1 and grant_name = 'sales_admin' and revoked_at is null`, [target]);
+    const org = await q.query<{ id: string }>(`select id from organizations where slug = 'culturosity'`);
+    if (org.rows[0]) {
+      const m = await q.query<{ id: string }>(
+        `insert into memberships (user_id, org_id, role) values ($1,$2,'owner')
+         on conflict (user_id, org_id) do update set role = 'owner', status = 'active' returning id`,
+        [target, org.rows[0].id],
+      );
+      const p = await q.query<{ id: string }>(`select id from programs where org_id = $1 and is_default`, [org.rows[0].id]);
+      if (p.rows[0]) await q.query(`insert into program_memberships (program_id, membership_id) values ($1,$2) on conflict do nothing`, [p.rows[0].id, m.rows[0].id]);
+    }
+    await audit(q, { actor: user.id, action: "admin.promoted", targetType: "user", targetId: target, meta: { email: t.rows[0].email } });
+  });
+  return c.json({ ok: true });
+});
+
+/** Turn another super admin back into a salesperson (never yourself or the primary owner). */
+internalRoutes.post("/internal/team/:userId/remove-super-admin", async (c) => {
+  const { user } = await requireUnlock(c, ["super_admin"]);
+  const { db } = c.get("deps");
+  await rateLimit(db, `admin-demote:${user.id}`, 10, 3600);
+  const target = c.req.param("userId");
+  if (target === user.id) throw badRequest("You can't remove your own super admin access.");
+  await confirmPassword(c, user);
+  if (target === (await primarySuperAdminId(db))) throw forbidden("This is the primary owner account. Its super admin access can't be removed.");
+  const t = await db.query<{ email: string }>(
+    `select u.email from app_users u join platform_grants g on g.user_id = u.id and g.grant_name = 'super_admin' and g.revoked_at is null where u.id = $1`,
+    [target],
+  );
+  if (!t.rows[0]) throw notFound("That super admin account wasn't found.");
+  await db.tx(async (q) => {
+    await q.query(`update platform_grants set revoked_at = now() where user_id = $1 and grant_name = 'super_admin' and revoked_at is null`, [target]);
+    const has = await q.query(`select 1 from platform_grants where user_id = $1 and grant_name = 'sales_admin' and revoked_at is null`, [target]);
+    if (!has.rows.length) await q.query(`insert into platform_grants (user_id, grant_name, granted_by) values ($1,'sales_admin',$2)`, [target, user.id]);
+    // They're no longer an owner of the Culturosity workspace itself.
+    await q.query(
+      `update memberships set role = 'member' where user_id = $1 and role = 'owner' and org_id = (select id from organizations where slug = 'culturosity')`,
+      [target],
+    );
+    await q.query(`update admin_unlocks set revoked_at = now() where user_id = $1 and revoked_at is null`, [target]);
+    await audit(q, { actor: user.id, action: "admin.demoted", targetType: "user", targetId: target, meta: { email: t.rows[0].email } });
+  });
+  return c.json({ ok: true });
+});
+
 internalRoutes.post("/internal/team/:userId/remove", async (c) => {
   const { user } = await requireUnlock(c, ["super_admin"]);
   const { db } = c.get("deps");
@@ -1024,7 +1095,7 @@ internalRoutes.post("/internal/team/:userId/remove", async (c) => {
     `update platform_grants set revoked_at = now() where user_id = $1 and grant_name = 'sales_admin' and revoked_at is null returning id`,
     [target],
   );
-  if (!r.rows.length) throw badRequest("Only salespeople can be removed here. Super admin access can't be removed from the site.");
+  if (!r.rows.length) throw badRequest("Only salespeople can be removed here. To take away super admin access, use Remove super admin.");
   await db.query(`update admin_unlocks set revoked_at = now() where user_id = $1 and revoked_at is null`, [target]);
   await audit(db, { actor: user.id, action: "staff.removed", targetType: "user", targetId: target });
   return c.json({ ok: true });

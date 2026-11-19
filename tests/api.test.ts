@@ -709,6 +709,8 @@ describe("removing an extra super admin account", () => {
       await ctx.db.query(`insert into platform_grants (user_id, grant_name) values ($1,'super_admin')`, [id]);
       return id;
     };
+    const me0 = (await sa.get("/me")).json.user.id;
+    await ctx.db.query(`insert into settings (key, value) values ('primary_super_admin', $1::jsonb) on conflict (key) do update set value = excluded.value`, [JSON.stringify(me0)]);
     const oldId = await mk("old-admin@example.com");
     // Make it an owner of the Culturosity workspace (shared with the current super admin) and sole owner of a test workspace.
     const cul = (await ctx.db.query<{ id: string }>(`select id from organizations where slug = 'culturosity'`)).rows[0].id;
@@ -733,6 +735,48 @@ describe("removing an extra super admin account", () => {
     expect((await ctx.db.query(`select 1 from platform_grants where user_id = $1`, [oldId])).rows).toHaveLength(0);
     // The Culturosity workspace still has its other owner.
     expect((await ctx.db.query(`select 1 from memberships where org_id = $1 and role = 'owner' and status = 'active'`, [cul])).rows.length).toBeGreaterThan(0);
+  });
+});
+
+describe("adding another super admin", () => {
+  it("promotes a salesperson, and protects the primary owner from other super admins", async () => {
+    await ctx.db.query(`delete from rate_limits`);
+    await ctx.db.query(`delete from settings where key = 'primary_super_admin'`);
+    const sa = client(app, "10.13.0.1");
+    await sa.signIn("super@demo.culturosity.test");
+    await sa.post("/internal/gate/unlock", { code: TEST_GATE_CODE });
+    const me = (await sa.get("/me")).json.user.id;
+    const { passwordAuth } = await import("../server/lib/auth");
+    const PW2 = "a-long-second-admin-pw-1";
+    const repId = await ctx.db.tx((q) => passwordAuth.createPasswordUser(q, { email: "second.admin@example.com", password: PW2, displayName: "Second", verified: true }));
+    await ctx.db.query(`insert into platform_grants (user_id, grant_name) values ($1,'sales_admin')`, [repId]);
+
+    expect((await sa.post(`/internal/team/${repId}/make-super-admin`, { password: "wrong-password" })).status).toBe(400);
+    expect((await sa.post(`/internal/team/${me}/make-super-admin`, { password: PASSWORD })).status).toBe(404); // not a salesperson
+    expect((await sa.post(`/internal/team/${repId}/make-super-admin`, { password: PASSWORD })).status).toBe(200);
+    const team = (await sa.get("/internal/team")).json;
+    expect(team.primaryId).toBe(me); // the person who promoted is recorded as the primary owner
+    expect(team.team.filter((t: any) => t.id === repId).map((t: any) => t.grant_name)).toEqual(["super_admin"]);
+    const role = await ctx.db.query(`select m.role from memberships m join organizations o on o.id = m.org_id where o.slug = 'culturosity' and m.user_id = $1`, [repId]);
+    expect(role.rows[0].role).toBe("owner");
+
+    // The new super admin has full access, but can't delete or demote the primary owner.
+    const second = client(app, "10.13.0.2");
+    await second.signIn("second.admin@example.com", PW2);
+    await second.post("/internal/gate/unlock", { code: TEST_GATE_CODE });
+    expect((await second.get("/internal/team")).status).toBe(200);
+    expect((await second.post(`/internal/team/${me}/delete-account`, { password: PW2 })).status).toBe(403);
+    expect((await second.post(`/internal/team/${me}/remove-super-admin`, { password: PW2 })).status).toBe(403);
+    expect((await second.post(`/internal/team/${repId}/remove-super-admin`, { password: PW2 })).status).toBe(400); // not yourself
+    expect((await ctx.db.query(`select 1 from platform_grants where user_id = $1 and grant_name = 'super_admin' and revoked_at is null`, [me])).rows).toHaveLength(1);
+
+    // The primary owner can turn them back into a salesperson.
+    expect((await sa.post(`/internal/team/${repId}/remove-super-admin`, { password: PASSWORD })).status).toBe(200);
+    const after = (await sa.get("/internal/team")).json.team.filter((t: any) => t.id === repId).map((t: any) => t.grant_name);
+    expect(after).toEqual(["sales_admin"]);
+    const role2 = await ctx.db.query(`select m.role from memberships m join organizations o on o.id = m.org_id where o.slug = 'culturosity' and m.user_id = $1`, [repId]);
+    expect(role2.rows[0].role).toBe("member");
+    expect((await second.get("/internal/team")).status).toBe(404);
   });
 });
 

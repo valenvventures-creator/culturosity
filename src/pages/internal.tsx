@@ -1895,6 +1895,65 @@ function DeleteAdminAccount({ id, email, onDone }: { id: string; email: string; 
   );
 }
 
+/** A row action that asks for the super admin's own password before it runs. */
+function PasswordAction({
+  label,
+  confirmText,
+  submitLabel,
+  path,
+  done,
+  danger,
+  onDone,
+}: {
+  label: string;
+  confirmText: React.ReactNode;
+  submitLabel: string;
+  path: string;
+  done: string;
+  danger?: boolean;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
+  if (!open)
+    return (
+      <button className="btn btn-ghost btn-sm" style={danger ? { color: "var(--danger)" } : undefined} onClick={() => setOpen(true)}>
+        {label}
+      </button>
+    );
+  return (
+    <form
+      style={{ display: "grid", gap: 8, minWidth: 220 }}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setErr(undefined);
+        setBusy(true);
+        try {
+          await api.post(path, { password });
+          toast(done);
+          setOpen(false);
+          setPassword("");
+          setBusy(false);
+          onDone();
+        } catch (x) {
+          setErr((x as ApiError).fields?.password ?? (x as Error).message);
+          setBusy(false);
+        }
+      }}
+    >
+      <div style={{ fontSize: ".82rem", overflowWrap: "anywhere" }}>{confirmText}</div>
+      <TextField label="Your password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} error={err} autoComplete="current-password" required />
+      <div className="row" style={{ gap: 6 }}>
+        <button className={`btn btn-sm ${danger ? "btn-danger" : "btn-primary"}`} disabled={busy || !password}>{busy ? "Working…" : submitLabel}</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
 export function SalesTeamPage() {
   useDocumentTitle("Sales team");
   const { data: me } = useMe();
@@ -1922,6 +1981,10 @@ export function SalesTeamPage() {
       <p className="muted" style={{ maxWidth: 720, marginTop: 0 }}>
         Salespeople get Admin Research &amp; Sales only — Overview, Research Directory, Sales Outreach, Pipeline, Demo Guide and the Service queue. They
         can’t see the catalogue, client workspaces or settings, and they still need the access code to open the area.
+      </p>
+      <p className="muted" style={{ maxWidth: 720 }}>
+        <strong>Adding another super admin:</strong> add them as a salesperson first, then choose <em>Make super admin…</em> next to their name once they’ve
+        signed up. Super admins have the same capabilities as you, except that nobody can delete or demote the <strong>primary owner</strong> account.
       </p>
       <div className="grid-2" style={{ alignItems: "start" }}>
         <form
@@ -1972,29 +2035,66 @@ export function SalesTeamPage() {
                   {data.team.map((t: any) => (
                     <tr key={`${t.id}-${t.grant_name}`}>
                       <td><div style={{ fontWeight: 600 }}>{t.display_name}</div><div className="muted" style={{ fontSize: ".85rem" }}>{t.email}</div></td>
-                      <td>{t.grant_name === "super_admin" ? "Super admin" : "Salesperson"}</td>
                       <td>
-                        {t.grant_name === "sales_admin" ? (
-                          <button
-                            className="btn btn-ghost btn-sm"
-                            onClick={async () => {
-                              if (!confirm(`Remove ${t.email} from the sales team? They lose access immediately.`)) return;
-                              try {
-                                await api.post(`/internal/team/${t.id}/remove`);
-                                toast("Access removed");
-                                refresh();
-                              } catch (e: any) {
-                                toast(e.message, "error");
-                              }
-                            }}
-                          >
-                            Remove
-                          </button>
-                        ) : t.email === me?.user?.email ? (
-                          <span className="muted" style={{ fontSize: ".82rem" }}>You</span>
-                        ) : (
-                          <DeleteAdminAccount id={t.id} email={t.email} onDone={refresh} />
-                        )}
+                        {t.grant_name === "super_admin" ? "Super admin" : "Salesperson"}
+                        {t.id === data.primaryId ? <div><span className="badge" title="Can't be deleted or removed by other super admins">Primary owner</span></div> : null}
+                      </td>
+                      <td>
+                        <div style={{ display: "grid", gap: 4, justifyItems: "start" }}>
+                          {t.grant_name === "sales_admin" ? (
+                            <>
+                              <PasswordAction
+                                label="Make super admin…"
+                                path={`/internal/team/${t.id}/make-super-admin`}
+                                done={`${t.email} is now a super admin`}
+                                submitLabel="Make super admin"
+                                confirmText={
+                                  <>
+                                    Give <strong>{t.email}</strong> full super admin access: client workspaces, settings, the sales team and the catalogue. They also
+                                    become an owner of the Culturosity workspace.{data.primaryId ? "" : " You'll be recorded as the primary owner, which they can't delete or remove."}
+                                  </>
+                                }
+                                onDone={refresh}
+                              />
+                              <button
+                                className="btn btn-ghost btn-sm"
+                                onClick={async () => {
+                                  if (!confirm(`Remove ${t.email} from the sales team? They lose access immediately.`)) return;
+                                  try {
+                                    await api.post(`/internal/team/${t.id}/remove`);
+                                    toast("Access removed");
+                                    refresh();
+                                  } catch (e: any) {
+                                    toast(e.message, "error");
+                                  }
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </>
+                          ) : t.email === me?.user?.email ? (
+                            <span className="muted" style={{ fontSize: ".82rem" }}>You</span>
+                          ) : t.id === data.primaryId ? (
+                            <span className="muted" style={{ fontSize: ".82rem" }}>Protected</span>
+                          ) : (
+                            <>
+                              <PasswordAction
+                                label="Remove super admin…"
+                                path={`/internal/team/${t.id}/remove-super-admin`}
+                                done={`${t.email} is now a salesperson`}
+                                submitLabel="Remove super admin"
+                                confirmText={
+                                  <>
+                                    Take away <strong>{t.email}</strong>’s super admin access? They stay on the team as a salesperson (you can remove them after) and
+                                    are no longer an owner of the Culturosity workspace.
+                                  </>
+                                }
+                                onDone={refresh}
+                              />
+                              <DeleteAdminAccount id={t.id} email={t.email} onDone={refresh} />
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}

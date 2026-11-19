@@ -3,6 +3,7 @@
 import type { Db } from "../db";
 import { passwordAuth } from "../lib/auth";
 import { passwordSchema, emailSchema } from "../../shared/schemas";
+import { claimPrimaryIfUnset } from "../lib/primaryAdmin";
 
 export async function bootstrapAdmin(db: Db, rawEmail: string, rawPassword: string | undefined): Promise<{ email: string; created: boolean }> {
   const email = emailSchema.parse(rawEmail);
@@ -24,5 +25,6 @@ export async function bootstrapAdmin(db: Db, rawEmail: string, rawPassword: stri
     const p = await db.query<{ id: string }>(`select id from programs where org_id = $1 and is_default`, [org.rows[0].id]);
     if (p.rows[0]) await db.query(`insert into program_memberships (program_id, membership_id) values ($1,$2) on conflict do nothing`, [p.rows[0].id, m.rows[0].id]);
   }
+  if (!/@demo\.culturosity\.test$/i.test(email)) await claimPrimaryIfUnset(db, userId);
   return { email, created };
 }

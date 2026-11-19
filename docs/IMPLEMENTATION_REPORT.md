@@ -38,7 +38,12 @@ Date: 2026-11-18.
 
 - **Admin → Sales team** (super admins only): enter a salesperson's email to create a private, single-use sign-up link (valid 7 days; only its hash is stored). Email isn't connected yet, so copy the link and send it; it is also queued for email for when a provider is configured. Unused links can be cancelled; salespeople can be removed (access ends immediately).
 - The link opens `/auth/sales/:token`: the person sets their name and password (or connects an existing account with its password) and gets the `sales_admin` role. They still need the numeric access code to open the area.
-- Salespeople can use Overview, Research Directory, Sales Outreach, Pipeline, Demo Guide and the Service queue. They **cannot** change the access code, manage the sales team, see or manage any workspace (including the Culturosity catalogue), pause/delete workspaces, reset demo data or create workspaces. Super admin access can't be removed from the site.
+- Salespeople can use Overview, Research Directory, Sales Outreach, Pipeline, Demo Guide and the Service queue. They **cannot** change the access code, manage the sales team, see or manage any workspace (including the Culturosity catalogue), pause/delete workspaces, reset demo data or create workspaces. Super admin access is removed with **Remove super admin…** (see below).
+
+### Additional super admins and the primary owner
+- **Admin → Sales team → Make super admin…** (super admins only, own password required) promotes a current salesperson to super admin: full platform access, and Owner of the Culturosity workspace. To add someone new, create a salesperson sign-up link first, then promote them once they've signed up. No environment variables are involved.
+- **Remove super admin…** turns another super admin back into a salesperson (no longer an owner of the Culturosity workspace; must unlock again). **Delete account…** remains available.
+- **Primary owner:** one super admin account is recorded as the primary owner (a user id in `settings.primary_super_admin`, never an email in source). It is recorded automatically: the only real super admin, or else the super admin who first promotes someone (or the account named by `BOOTSTRAP_ADMIN_EMAIL` at deploy). Other super admins have every capability except deleting or demoting the primary owner (403). Nobody can demote themselves.
 
 ### Proposal request emails
 
