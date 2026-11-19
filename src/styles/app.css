@@ -4456,3 +4456,82 @@ table.data tr.clickable {
 :root[data-theme="light"] .theme-area .svc-tiers-section {
   color: #fff;
 }
+.svc-band-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 28px;
+  color: #b4b4bf;
+  font-size: 0.92rem;
+}
+.svc-num svg {
+  width: 26px;
+  height: 26px;
+}
+/* Home page: compact version of the three approaches */
+.svc-mini {
+  background: radial-gradient(600px 260px at 90% 0%, rgba(87, 246, 195, 0.14), transparent 60%), #08080b;
+  color: #fff;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+}
+.svc-mini .eyebrow {
+  color: var(--brand-mint);
+}
+.svc-mini h3 {
+  margin: 4px 0 14px;
+  font-size: 1.3rem;
+}
+.svc-mini .svc-scale {
+  margin-bottom: 12px;
+  font-size: 0.72rem;
+}
+.svc-mini-list {
+  display: grid;
+  gap: 10px;
+}
+.svc-mini-tier {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1.5px solid #2e2e38;
+  background: linear-gradient(170deg, #17171d, #0e0e12);
+  color: #fff !important;
+  text-decoration: none;
+  transition: transform var(--t) var(--ease), border-color var(--t);
+}
+.svc-mini-tier:hover {
+  transform: translateX(4px);
+  border-color: var(--brand-mint);
+}
+.svc-mini-tier strong {
+  display: block;
+}
+.svc-mini-tier span span {
+  display: block;
+  color: #b4b4bf;
+  font-size: 0.88rem;
+}
+.svc-mini-tier .svc-tier-level {
+  flex-direction: column;
+  gap: 4px;
+}
+.svc-mini-tier .svc-tier-level i {
+  width: 22px;
+  height: 6px;
+}
+.svc-mini-arrow {
+  color: var(--brand-mint);
+  font-weight: 800;
+}
+:root[data-theme="light"] .theme-area .svc-mini .eyebrow {
+  color: var(--brand-mint);
+}
+:root[data-theme="light"] .theme-area .svc-mini {
+  color: #fff;
+}

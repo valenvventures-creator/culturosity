@@ -98,27 +98,31 @@ export function HomePage() {
               <li>Measured reporting: views, clicks, and verified redemptions</li>
             </ul>
           </div>
-          <div className="panel">
-            <h3>Choose how you work with us</h3>
-            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-              {[
-                ["Self-Service", "Run the platform yourself."],
-                ["Launch with Culturosity", "We set up, populate and launch with you."],
-                ["Fully Managed by Culturosity", "We run the program and keep it current."],
-              ].map(([t, d]) => (
-                <div key={t} className="row" style={{ alignItems: "flex-start", gap: 12 }}>
-                  <span style={{ color: "#0a6b51", marginTop: 2 }}><IconCheck /></span>
-                  <div>
-                    <strong>{t}</strong>
-                    <div className="muted">{d}</div>
-                  </div>
-                </div>
+          <div className="svc-mini">
+            <div className="eyebrow">Three ways to work with us</div>
+            <h3>Choose how hands-on Culturosity should be</h3>
+            <div className="svc-scale" aria-hidden>
+              <span>Your team</span>
+              <span className="svc-scale-bar" />
+              <span>Culturosity</span>
+            </div>
+            <div className="svc-mini-list">
+              {TIERS.map((t) => (
+                <Link key={t.key} className="svc-mini-tier" to={`/services?approach=${t.key}#request`}>
+                  <span className="svc-tier-level" aria-label={`Culturosity involvement ${t.level} of 3`}>
+                    {[1, 2, 3].map((d) => <i key={d} className={d <= t.level ? "lit" : ""} />)}
+                  </span>
+                  <span>
+                    <strong>{t.name}</strong>
+                    <span>{t.tagline}</span>
+                  </span>
+                  <span className="svc-mini-arrow" aria-hidden>→</span>
+                </Link>
               ))}
             </div>
-            <div className="row" style={{ marginTop: 18 }}>
-              <Link className="btn btn-dark" to="/services#request">Request a Proposal</Link>
-              <Link className="btn btn-ghost" to="/services#request">Get started</Link>
-            </div>
+            <Link className="btn btn-primary btn-lg" to="/services#request" style={{ marginTop: 16 }}>
+              Request a Proposal <IconArrow size={18} />
+            </Link>
           </div>
         </div>
       </section>
@@ -210,6 +214,7 @@ export function SavedPage() {
 
 export function AffinityPage() {
   useDocumentTitle("Affinity Programs");
+  const nav = useNavigate();
   const { data: me } = useMe();
   const orgs = (me?.memberships ?? []).filter((m) => m.org_kind === "client");
   return (
@@ -259,37 +264,30 @@ export function AffinityPage() {
               </div>
             ))}
           </div>
-          <div className="panel" style={{ marginTop: 24 }}>
-            <h2>Build your program with Culturosity.</h2>
-            <p className="muted">Manage it yourself, or let our team take care of it.</p>
-            <ApproachCards />
+        </div>
+      </section>
+      <section className="svc-tiers-section" aria-labelledby="aff-tiers-h">
+        <div className="container">
+          <div className="svc-head">
+            <div className="svc-num" aria-hidden>
+              <IconSparkle />
+            </div>
+            <div>
+              <div className="eyebrow">Three ways to work with us</div>
+              <h2 id="aff-tiers-h">Build your program with Culturosity.</h2>
+              <p className="svc-sub">Manage it yourself, or let our team take care of it. Tap the approach that suits you to start your proposal with it.</p>
+            </div>
+          </div>
+          <TierCards approach="unsure" onSelect={(k) => nav(`/services?approach=${k}#request`)} actionLabel="Start my proposal with this →" />
+          <div className="svc-band-cta">
+            <Link className="btn btn-primary btn-lg" to="/services#request">
+              Request a Proposal <IconArrow size={18} />
+            </Link>
+            <span>Pricing is scoped to your organization — no obligation.</span>
           </div>
         </div>
       </section>
     </>
-  );
-}
-
-function ApproachCards() {
-  return (
-    <div className="grid-3" style={{ marginTop: 16 }}>
-      {[
-        ["Self-Service", "Your team runs the platform with our tools and guides.", ["Branded program portal", "Submit a Perk and bulk import", "Member invitations and reporting"], "/services#request", "Get started"],
-        ["Launch with Culturosity", "We plan, build and launch the program with you, then hand it over.", ["Program strategy and planning", "Portal setup and offer population", "Launch materials for members"], "/services#request", "Request a Proposal"],
-        ["Fully Managed by Culturosity", "We run the program day to day and keep it current.", ["Provider discovery and coordination", "Perk maintenance and renewals", "Ongoing reporting and improvement"], "/services#request", "Request a Proposal"],
-      ].map(([t, d, items, to, cta], i) => (
-        <div key={t as string} className={`approach-card ${i === 2 ? "featured" : ""}`}>
-          <h3>{t as string}</h3>
-          <p className="muted" style={{ margin: 0 }}>{d as string}</p>
-          <ul className="checklist" style={{ margin: "8px 0 12px" }}>
-            {(items as string[]).map((x) => <li key={x}>{x}</li>)}
-          </ul>
-          <Link className={`btn ${i === 2 ? "btn-dark" : "btn-ghost"}`} style={{ marginTop: "auto" }} to={to as string}>
-            {cta as string}
-          </Link>
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -334,11 +332,75 @@ const TIERS: { key: "self_service" | "launch" | "managed"; name: string; tagline
 
 const APPROACH_NAME: Record<string, string> = { self_service: "Self-Service", launch: "Launch with Culturosity", managed: "Fully Managed by Culturosity", unsure: "Not sure yet" };
 
+/** The three approaches on a "your team leads → Culturosity leads" scale. Shared by Services and Affinity. */
+function TierCards({
+  approach,
+  suggested,
+  onSelect,
+  actionLabel = "Tap to choose",
+}: {
+  approach: string;
+  suggested?: string | null;
+  onSelect: (key: string) => void;
+  actionLabel?: string;
+}) {
+  return (
+    <>
+      <div className="svc-scale" aria-hidden>
+        <span>Your team leads</span>
+        <span className="svc-scale-bar" />
+        <span>Culturosity leads</span>
+      </div>
+      <div className="svc-tiers" role="radiogroup" aria-label="Preferred approach">
+        {TIERS.map((t) => {
+          const on = approach === t.key;
+          return (
+            <div
+              key={t.key}
+              role="radio"
+              aria-checked={on}
+              tabIndex={0}
+              className={`svc-tier lvl-${t.level} ${on ? "on" : ""}`}
+              onClick={() => onSelect(t.key)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(t.key);
+                }
+              }}
+            >
+              {suggested === t.key ? <span className="svc-suggest">Suggested for what you picked</span> : null}
+              <div className="svc-tier-level" aria-label={`Culturosity involvement ${t.level} of 3`}>
+                {[1, 2, 3].map((d) => <i key={d} className={d <= t.level ? "lit" : ""} />)}
+              </div>
+              <h3>{t.name}</h3>
+              <p className="svc-tagline">{t.tagline}</p>
+              <div className="svc-who">
+                <div><small>Your team</small>{t.you}</div>
+                <div><small>Culturosity</small>{t.us}</div>
+              </div>
+              <ul className="checklist">
+                {t.items.map((x) => <li key={x}>{x}</li>)}
+              </ul>
+              <div className="svc-tier-state" aria-hidden>{on ? "✓ Your preference" : actionLabel}</div>
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 export function ServicesPage() {
   useDocumentTitle("Culturosity Management Services");
   const { data: cfg } = useConfig();
+  const [sp] = useSearchParams();
   const [needs, setNeeds] = useState<string[]>([]);
-  const [approach, setApproach] = useState<string>("unsure");
+  const [approach, setApproach] = useState<string>(() => (["self_service", "launch", "managed"].includes(sp.get("approach") ?? "") ? sp.get("approach")! : "unsure"));
+  // Arriving with #request (e.g. from the Affinity page): bring the form into view.
+  useEffect(() => {
+    if (window.location.hash === "#request") setTimeout(() => document.getElementById("request")?.scrollIntoView({ block: "start" }), 120);
+  }, []);
   const [formInView, setFormInView] = useState(false);
   const [pastHero, setPastHero] = useState(false);
   const formRef = useRef<HTMLDivElement>(null);
@@ -430,47 +492,7 @@ export function ServicesPage() {
               <p className="svc-sub">From your team running everything, to us running it for you. Pricing depends on your organization and the support you need — your proposal is scoped to you.</p>
             </div>
           </div>
-          <div className="svc-scale" aria-hidden>
-            <span>Your team leads</span>
-            <span className="svc-scale-bar" />
-            <span>Culturosity leads</span>
-          </div>
-          <div className="svc-tiers" role="radiogroup" aria-label="Preferred approach">
-            {TIERS.map((t) => {
-              const on = approach === t.key;
-              return (
-                <div
-                  key={t.key}
-                  role="radio"
-                  aria-checked={on}
-                  tabIndex={0}
-                  className={`svc-tier lvl-${t.level} ${on ? "on" : ""}`}
-                  onClick={() => setApproach(on ? "unsure" : t.key)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setApproach(on ? "unsure" : t.key);
-                    }
-                  }}
-                >
-                  {suggested === t.key ? <span className="svc-suggest">Suggested for what you picked</span> : null}
-                  <div className="svc-tier-level" aria-label={`Culturosity involvement ${t.level} of 3`}>
-                    {[1, 2, 3].map((d) => <i key={d} className={d <= t.level ? "lit" : ""} />)}
-                  </div>
-                  <h3>{t.name}</h3>
-                  <p className="svc-tagline">{t.tagline}</p>
-                  <div className="svc-who">
-                    <div><small>Your team</small>{t.you}</div>
-                    <div><small>Culturosity</small>{t.us}</div>
-                  </div>
-                  <ul className="checklist">
-                    {t.items.map((x) => <li key={x}>{x}</li>)}
-                  </ul>
-                  <div className="svc-tier-state" aria-hidden>{on ? "✓ Your preference" : "Tap to choose"}</div>
-                </div>
-              );
-            })}
-          </div>
+          <TierCards approach={approach} suggested={suggested} onSelect={(k) => setApproach(approach === k ? "unsure" : k)} />
         </div>
       </section>
 
