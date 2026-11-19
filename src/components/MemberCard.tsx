@@ -5,6 +5,12 @@ import { api } from "../lib/api";
 import { useToast } from "./ui";
 import { IconLock } from "./Icons";
 
+/** "23 h 59 min" for long periods, "4:05" in the last hour. */
+function validFor(seconds: number) {
+  if (seconds >= 3600) return `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)} min`;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 interface Token {
   qrPayload: string;
   manualCode: string;
@@ -74,7 +80,7 @@ export function MemberCard({
 
   // Count down from when the code arrived, so a wrong device clock can't make a new code look expired.
   // (The server still enforces the real expiry.)
-  const ttl = token ? token.expiresInSeconds ?? 600 : 0;
+  const ttl = token ? token.expiresInSeconds ?? 24 * 60 * 60 : 0;
   const remaining = token ? Math.min(ttl, Math.max(0, Math.floor(ttl - (now - (token.receivedAt ?? now)) / 1000))) : 0;
   const expired = token && remaining === 0;
 
@@ -103,7 +109,7 @@ export function MemberCard({
         <div className="mc-note">One-time code</div>
         <div className="mc-code" aria-label={`Manual code ${token.manualCode.split("").join(" ")}`}>{token.manualCode}</div>
         <div className="mc-note" aria-live="polite">
-          Valid for {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")} · provider {token.providerRef}
+          Valid for {validFor(remaining)} · provider {token.providerRef}
         </div>
       </div>
     </div>
@@ -113,7 +119,7 @@ export function MemberCard({
       <button className="btn btn-ghost btn-sm mc-btn" onClick={issue} disabled={busy}>
         {busy ? "Generating…" : expired ? "Generate a new code" : "Get a one-time verification code"}
       </button>
-      <p className="mc-note">For providers who verify members in Culturosity. Codes last 10 minutes and work once.</p>
+      <p className="mc-note">For providers who verify members in Culturosity. Codes last 24 hours and work once.</p>
       {err ? <p role="alert" className="mc-note mc-err">{err}</p> : null}
     </div>
   );

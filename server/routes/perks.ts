@@ -320,7 +320,9 @@ perkRoutes.post("/redemption-tokens", async (c) => {
   }
   const token = randomToken(24);
   const code = shortCode(10);
-  const expires = new Date(Date.now() + 10 * 60_000);
+  // One-time codes are valid for 24 hours (and one use).
+  const CODE_TTL_SECONDS = 24 * 60 * 60;
+  const expires = new Date(Date.now() + CODE_TTL_SECONDS * 1000);
   const prov = await db.query<{ provider_ref: string }>(`select provider_ref from providers where id = $1`, [perk.provider_id]);
   await db.query(`update redemption_tokens set revoked_at = now() where user_id = $1 and perk_id = $2 and revoked_at is null and uses = 0`, [user.id, perkId]);
   await db.query(
@@ -337,7 +339,7 @@ perkRoutes.post("/redemption-tokens", async (c) => {
     providerRef: prov.rows[0].provider_ref,
     expiresAt: expires.toISOString(),
     // Lets the card count down from when it receives the code, whatever the device's clock says.
-    expiresInSeconds: 600,
+    expiresInSeconds: CODE_TTL_SECONDS,
   });
 });
 

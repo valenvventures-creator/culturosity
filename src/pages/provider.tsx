@@ -100,7 +100,7 @@ export function ProviderVerifyPage() {
       <div className="container" style={{ maxWidth: 900 }}>
         <div className="eyebrow">Provider tools</div>
         <h1 style={{ fontSize: "2rem" }}>Verify a member redemption</h1>
-        <p className="muted">Scan or type the member's <strong>one-time verification code</strong>. Each code is checked on the server, works once and lasts 10 minutes.</p>
+        <p className="muted">Scan or type the member's <strong>one-time verification code</strong>. Each code is checked on the server, works once and lasts 24 hours.</p>
         <div className="alert alert-info" style={{ marginBottom: 12 }}>
           <strong>Where the member finds it:</strong> on the perk's Details page, under their member card, they open <em>“Provider asks for a verification code?”</em>{" "}
           and select <em>Get a one-time verification code</em>. It shows a QR code and a 10-character code like <code>ABCDE-FGHJK</code>.

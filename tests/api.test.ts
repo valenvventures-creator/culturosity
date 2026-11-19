@@ -228,6 +228,11 @@ describe("6. provider scope and atomic redemption", () => {
     await member.signIn("member@northwind.example");
     const cedar = (await member.get("/catalogue?q=Cedar")).json.perks[0];
     const tok = await member.post("/redemption-tokens", { programId: cedar.program_id, perkId: cedar.id });
+    // One-time codes last 24 hours.
+    expect(tok.json.expiresInSeconds).toBe(86400);
+    const ttlMs = new Date(tok.json.expiresAt).getTime() - Date.now();
+    expect(ttlMs).toBeGreaterThan(23.9 * 3600_000);
+    expect(ttlMs).toBeLessThanOrEqual(24 * 3600_000);
     expect(tok.status).toBe(200);
     expect(tok.json.qrPayload).toMatch(/^CUL1:CUL-P-/);
     expect(tok.json.qrPayload).not.toContain("northwind.example");

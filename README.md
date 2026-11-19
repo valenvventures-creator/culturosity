@@ -104,7 +104,7 @@ A person can belong to several organizations. The workspace selector in the head
 **Implemented:** server-verified QR and manual codes.
 
 - Every provider gets a stable, human-readable **provider reference** (`CUL-P-XXXXXX`) and an optional admin-configured **POS reference**.
-- A member taps *Show my redemption code*. The server issues an opaque token valid for 10 minutes and one use. The QR payload is `CUL1:<providerRef>:<token>`, with a manual code alongside. No names, emails or membership numbers are encoded.
+- A member taps *Show my redemption code*. The server issues an opaque token valid for 24 hours and one use. The QR payload is `CUL1:<providerRef>:<token>`, with a manual code alongside. No names, emails or membership numbers are encoded.
 - The provider verification page (`/provider/verify`) uses camera scanning via `BarcodeDetector` where supported, with manual entry as a fallback. The server checks:
   - the token,
   - the verifier's assignment to that provider,
