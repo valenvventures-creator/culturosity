@@ -3928,3 +3928,40 @@ table.data tr.clickable {
   opacity: 0.45;
   cursor: not-allowed;
 }
+.ls-assess {
+  margin-top: 10px;
+  border-radius: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-light);
+  background: #fafafa;
+}
+.ls-assess.fit-strong {
+  border-color: #9fe0c4;
+  background: #effaf5;
+}
+.ls-assess.fit-weak {
+  border-color: #e7d7a6;
+  background: #fffaeb;
+}
+.ls-assess-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.ls-fit {
+  font-weight: 800;
+  font-size: 0.9rem;
+  margin-right: 4px;
+}
+.ls-chip {
+  font-size: 0.78rem;
+  border: 1px solid var(--line-light);
+  background: #fff;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.ls-assess ul {
+  margin: 6px 0 4px;
+  padding-left: 18px;
+}

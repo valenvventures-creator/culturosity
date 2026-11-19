@@ -65,6 +65,86 @@ const SUBMIT_TOOL = {
   },
 };
 
+export const SERVICES = [
+  "Self-Service",
+  "Launch with Culturosity",
+  "Fully Managed by Culturosity",
+  "Culturosity Perks (licensed offers)",
+  "Not a fit",
+] as const;
+
+const EVIDENCE = {
+  type: "array",
+  description: "Retrieved pages that support this point.",
+  items: {
+    type: "object",
+    additionalProperties: false,
+    required: ["url", "establishes"],
+    properties: { url: { type: "string" }, establishes: { type: "string" } },
+  },
+};
+
+const ASSESSMENT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["mobile_app", "management", "fit"],
+  properties: {
+    mobile_app: {
+      type: "object",
+      additionalProperties: false,
+      required: ["status", "details", "evidence"],
+      properties: {
+        status: { type: "string", enum: ["yes", "not_found", "unknown"], description: "yes = a page shows an app for the program/benefits; not_found = you checked and found none; unknown = couldn't check." },
+        details: { type: "string", description: "App name and stores, or what you checked." },
+        evidence: EVIDENCE,
+      },
+    },
+    management: {
+      type: "object",
+      additionalProperties: false,
+      required: ["status", "manager", "details", "evidence"],
+      properties: {
+        status: { type: "string", enum: ["third_party", "in_house", "unknown"], description: "third_party = a perks vendor/platform runs it; in_house = the organization lists discounts itself (web page, PDF, newsletter); unknown." },
+        manager: { type: "string", description: "Vendor or platform name if third_party, else empty." },
+        details: { type: "string" },
+        evidence: EVIDENCE,
+      },
+    },
+    fit: {
+      type: "object",
+      additionalProperties: false,
+      required: ["rating", "recommended_service", "reasons"],
+      properties: {
+        rating: { type: "string", enum: ["strong", "possible", "weak"] },
+        recommended_service: { type: "string", enum: [...SERVICES] },
+        reasons: { type: "array", items: { type: "string" }, description: "2–4 short reasons grounded in what the pages show." },
+      },
+    },
+  },
+};
+
+/** Extra-deep searches also return an assessment for every candidate. */
+function submitToolWithAssessment() {
+  const t = JSON.parse(JSON.stringify(SUBMIT_TOOL));
+  const item = t.input_schema.properties.candidates.items;
+  item.properties.assessment = ASSESSMENT_SCHEMA;
+  item.required.push("assessment");
+  return t;
+}
+
+const ASSESS_INSTRUCTIONS = `This is an EXTRA-DEEP search. For every candidate, also assess:
+1. Mobile app — does the program (or the organization, for its members' perks/benefits) have a mobile app? Look for App Store / Google Play links and "download our app" on the benefits pages. Use "yes" only with a page that shows it.
+2. Management — is the program professionally managed? "third_party" if a perks vendor or platform runs it (name it, e.g. a perks marketplace or benefits platform), "in_house" if the organization lists discounts itself (a web page, PDF or newsletter), else "unknown".
+3. Fit for Culturosity — rate strong / possible / weak, pick the best service, and give 2–4 reasons grounded in the pages.
+
+About Culturosity (use this to judge fit):
+- It builds branded perks programs: a program portal and app experience with a digital member card and QR redemption at participating businesses.
+- It curates Culturosity Perks — local, cultural and experience offers (arts, dining, wellness, events) that can be added to a client's program.
+- Services: Self-Service (the client runs the platform with Culturosity's tools); Launch with Culturosity (plan, build, populate and launch, then hand over); Fully Managed by Culturosity (run day to day: finding providers, maintaining and renewing perks, reporting).
+- Strong-fit signals: a sizeable member or employee base in Canada or the USA (especially Manitoba and the Prairies); no program, or a basic in-house list of discounts; no mobile app; stale or hard-to-use offers; an interest in culture, community or local business.
+- Weaker-fit signals: already uses a large professional perks vendor with its own app; is itself a competing perks operator (that may still suit "Culturosity Perks (licensed offers)" or a partnership); too small or outside Canada/USA.
+Fit is your judgement — base it only on what you found, and never invent facts.`;
+
 const SYSTEM = `You research North American affinity programs for Culturosity, a company that builds branded perks programs.
 Find organizations in Canada and/or the USA that run (or could run) an affinity, employee-discount or member-benefit program, matching the request.
 Rules:
@@ -94,6 +174,38 @@ export interface Candidate {
   prospect_type: string;
   sector: string;
   citations: { url: string; title: string; establishes: string }[];
+  assessment?: Assessment;
+}
+
+export interface Assessment {
+  mobile_app: { status: "yes" | "not_found" | "unknown"; details: string; evidence: { url: string; establishes: string }[] };
+  management: { status: "third_party" | "in_house" | "unknown"; manager: string; details: string; evidence: { url: string; establishes: string }[] };
+  fit: { rating: "strong" | "possible" | "weak"; recommended_service: string; reasons: string[] };
+}
+
+/** Facts in an assessment need retrieved evidence; unsupported claims are downgraded to "unknown". */
+export function verifyAssessment(a: Assessment | undefined, retrieved: Set<string>): Assessment | undefined {
+  if (!a) return undefined;
+  const t = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
+  const keep = (ev: { url: string; establishes: string }[] | undefined) =>
+    (ev ?? [])
+      .filter((e) => {
+        const n = normUrl(e.url);
+        return n !== null && retrieved.has(n);
+      })
+      .slice(0, 4)
+      .map((e) => ({ url: t(e.url, 600), establishes: t(e.establishes, 300) }));
+  const appEv = keep(a.mobile_app?.evidence);
+  const mgEv = keep(a.management?.evidence);
+  const appStatus = a.mobile_app?.status === "yes" && !appEv.length ? "unknown" : (["yes", "not_found", "unknown"].includes(a.mobile_app?.status) ? a.mobile_app.status : "unknown");
+  const mgStatus = a.management?.status !== "unknown" && !mgEv.length ? "unknown" : (["third_party", "in_house", "unknown"].includes(a.management?.status) ? a.management.status : "unknown");
+  const rating = ["strong", "possible", "weak"].includes(a.fit?.rating) ? a.fit.rating : "possible";
+  const service = (SERVICES as readonly string[]).includes(a.fit?.recommended_service) ? a.fit.recommended_service : "Not a fit";
+  return {
+    mobile_app: { status: appStatus as Assessment["mobile_app"]["status"], details: t(a.mobile_app?.details, 400), evidence: appEv },
+    management: { status: mgStatus as Assessment["management"]["status"], manager: mgStatus === "third_party" ? t(a.management?.manager, 120) : "", details: t(a.management?.details, 400), evidence: mgEv },
+    fit: { rating, recommended_service: service, reasons: (a.fit?.reasons ?? []).map((r) => t(r, 300)).filter(Boolean).slice(0, 4) },
+  };
 }
 
 /** Normalise a URL for comparison: lowercase host without www., no hash, no trailing slash. */
@@ -136,6 +248,7 @@ export function verifyCandidates(candidates: Candidate[], retrieved: Set<string>
       region: (c.region ?? "").slice(0, 120),
       sector: (c.sector ?? "").slice(0, 120),
       citations: citations.slice(0, 6).map((s) => ({ url: s.url.slice(0, 600), title: (s.title ?? "").slice(0, 300), establishes: (s.establishes ?? "").slice(0, 400) })),
+      assessment: verifyAssessment(c.assessment, retrieved),
     });
   }
   return out;
@@ -261,19 +374,21 @@ export async function runResearchSearch(deps: Deps, searchId: string, startDive?
     job.prospect_type ? `Prospect type: ${job.prospect_type}` : "",
     job.sector ? `Sector: ${job.sector}` : "",
   ].filter(Boolean);
+  const extra = job.depth === "extra";
   const userText = [
     `<REQUEST>${job.query}</REQUEST>`,
     filters.join("\n"),
     `Find up to ${depth.maxCandidates} strong candidates.`,
+    extra ? ASSESS_INSTRUCTIONS : "",
     `<ALREADY_IN_DIRECTORY>${already || "(empty)"}</ALREADY_IN_DIRECTORY>`,
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 
   const usage: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, searches: 0 };
   let model = config.aiModel;
   try {
     const run = await researchLoop<{ candidates: Candidate[]; notes: string }>(
       deps,
-      { system: SYSTEM, userText, submitTool: SUBMIT_TOOL, searches: depth.searches, fetches: depth.fetches, effort: depth.effort, country: job.country?.length === 1 ? job.country[0] : undefined },
+      { system: SYSTEM, userText, submitTool: extra ? submitToolWithAssessment() : SUBMIT_TOOL, searches: depth.searches, fetches: depth.fetches, effort: depth.effort, country: job.country?.length === 1 ? job.country[0] : undefined },
       usage,
     );
     model = run.model;
@@ -282,6 +397,9 @@ export async function runResearchSearch(deps: Deps, searchId: string, startDive?
     const names = new Set(existing.rows.map((r) => r.display_name.toLowerCase()));
     const domains = new Set(existing.rows.map((r) => r.primary_domain?.toLowerCase()).filter(Boolean) as string[]);
     candidates = candidates.filter((c) => !names.has(c.organization.toLowerCase()) && !(c.official_url && domains.has(hostOf(c.official_url) ?? "")));
+    // Extra-deep: best fits first, so in-depth research goes to them.
+    const rank = { strong: 0, possible: 1, weak: 2 } as const;
+    if (extra) candidates.sort((a, b) => rank[a.assessment?.fit.rating ?? "possible"] - rank[b.assessment?.fit.rating ?? "possible"]);
 
     const ids: string[] = [];
     await db.tx(async (q) => {
@@ -289,9 +407,10 @@ export async function runResearchSearch(deps: Deps, searchId: string, startDive?
         const c = candidates[i];
         const dive = job.deep_dive && i < MAX_DEEP_DIVES ? "queued" : "none";
         const r = await q.query<{ id: string }>(
-          `insert into research_suggestions (search_id, organization, program_name, summary, official_url, country, region, prospect_type, sector, citations, dive_status)
-           values ($1,$2,$3,$4,$5,$6::text[],$7,$8,$9,$10::jsonb,$11) returning id`,
-          [searchId, c.organization, c.program_name, c.summary, c.official_url || null, c.country, c.region, c.prospect_type, c.sector, JSON.stringify(c.citations), dive],
+          `insert into research_suggestions (search_id, organization, program_name, summary, official_url, country, region, prospect_type, sector, citations, dive_status, assessment)
+           values ($1,$2,$3,$4,$5,$6::text[],$7,$8,$9,$10::jsonb,$11,$12::jsonb) returning id`,
+          [searchId, c.organization, c.program_name, c.summary, c.official_url || null, c.country, c.region, c.prospect_type, c.sector, JSON.stringify(c.citations), dive,
+           c.assessment ? JSON.stringify(c.assessment) : null],
         );
         if (dive === "queued") ids.push(r.rows[0].id);
       }

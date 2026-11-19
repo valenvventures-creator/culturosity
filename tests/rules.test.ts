@@ -136,3 +136,26 @@ describe("live research: in-depth details", () => {
     expect(cleanDetails({ ...base, contact_url: "", public_email: "", citations: [{ url: "https://never.test", title: "", establishes: "" }] }, retrieved, hosts)).toBeNull();
   });
 });
+
+describe("live research: extra-deep assessment", () => {
+  it("downgrades app/management claims without retrieved evidence and cleans the fit", async () => {
+    const { verifyAssessment, normUrl } = await import("../server/lib/liveResearch");
+    const retrieved = new Set([normUrl("https://assoc.example/benefits")!]);
+    const ok = verifyAssessment(
+      {
+        mobile_app: { status: "yes", details: "Assoc Perks app", evidence: [{ url: "https://assoc.example/benefits", establishes: "Links to the app" }] },
+        management: { status: "third_party", manager: "PerkCo", details: "Run by PerkCo", evidence: [{ url: "https://nowhere.test/x", establishes: "?" }] },
+        fit: { rating: "strong", recommended_service: "Launch with Culturosity", reasons: ["No app", "Large membership"] },
+      } as any,
+      retrieved,
+    )!;
+    expect(ok.mobile_app.status).toBe("yes");
+    expect(ok.management.status).toBe("unknown"); // vendor claim had no retrieved evidence
+    expect(ok.management.manager).toBe("");
+    expect(ok.fit).toEqual({ rating: "strong", recommended_service: "Launch with Culturosity", reasons: ["No app", "Large membership"] });
+    const odd = verifyAssessment({ mobile_app: { status: "yes", details: "", evidence: [] }, management: { status: "in_house", manager: "", details: "", evidence: [] }, fit: { rating: "amazing", recommended_service: "Everything", reasons: [] } } as any, retrieved)!;
+    expect(odd.mobile_app.status).toBe("unknown");
+    expect(odd.fit.rating).toBe("possible");
+    expect(odd.fit.recommended_service).toBe("Not a fit");
+  });
+});

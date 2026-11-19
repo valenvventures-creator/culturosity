@@ -771,6 +771,25 @@ describe("live research search (no real API calls)", () => {
     expect(recC.record.internal_notes).toContain("Operated by: PerkCo");
     expect(recC.sources.map((x: any) => x.url).sort()).toEqual(["https://third-guild.example/benefits", "https://third-guild.example/perks"]);
 
+    // Extra-deep assessment: strong fits are listed first, and Add writes the fit into the record.
+    const weak = await mk("Weak Example Co", "https://weak-co.example");
+    const strong = await mk("Strong Example Union", "https://strong-union.example");
+    const assess = (rating: string) => JSON.stringify({
+      mobile_app: { status: "not_found", details: "No app on the benefits page", evidence: [{ url: "https://strong-union.example/benefits", establishes: "Benefits page, no app" }] },
+      management: { status: "in_house", manager: "", details: "PDF list of discounts", evidence: [{ url: "https://strong-union.example/benefits", establishes: "PDF list" }] },
+      fit: { rating, recommended_service: "Launch with Culturosity", reasons: ["No mobile app", "Discounts kept in a PDF"] },
+    });
+    await ctx.db.query(`update research_suggestions set assessment = $2::jsonb where id = $1`, [weak, assess("weak")]);
+    await ctx.db.query(`update research_suggestions set assessment = $2::jsonb where id = $1`, [strong, assess("strong")]);
+    const ordered = (await sales.get(`/internal/live-research/${s.rows[0].id}`)).json.suggestions.filter((x: any) => x.assessment).map((x: any) => x.organization);
+    expect(ordered).toEqual(["Strong Example Union", "Weak Example Co"]);
+    const addedS = await sales.post(`/internal/live-research/suggestions/${strong}/add`);
+    const recS = (await sales.get(`/internal/research/${addedS.json.id}`)).json;
+    expect(recS.record.fit_assessment).toContain("Culturosity fit (live search assessment): Strong — recommended: Launch with Culturosity");
+    expect(recS.record.fit_assessment).toContain("Mobile app: None found");
+    expect(recS.record.fit_assessment).toContain("Management: Managed in-house");
+    expect(recS.sources.map((x: any) => x.url)).toContain("https://strong-union.example/benefits");
+
     // The options are accepted (still refused here only because no API key is configured).
     expect((await sales.post("/internal/live-research", { query: "credit unions in Ontario", extraDeep: true, deepDive: true })).status).toBe(503);
     expect((await sales.get(`/internal/live-research`)).json.spentCents).toBe(12);

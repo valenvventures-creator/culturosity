@@ -554,7 +554,8 @@ internalRoutes.get("/internal/live-research/:id", async (c) => {
   if (!s.rows[0]) throw notFound();
   const { run_token_hash: _hidden, ...search } = s.rows[0] as any;
   const sug = await db.query(
-    `select g.*, d.display_name as decided_by_name from research_suggestions g left join app_users d on d.id = g.decided_by where g.search_id = $1 order by g.created_at`,
+    `select g.*, d.display_name as decided_by_name from research_suggestions g left join app_users d on d.id = g.decided_by where g.search_id = $1
+      order by case g.assessment->'fit'->>'rating' when 'strong' then 0 when 'possible' then 1 when 'weak' then 2 else 1 end, g.created_at`,
     [c.req.param("id")],
   );
   c.header("Cache-Control", "no-store");
@@ -595,6 +596,17 @@ internalRoutes.post("/internal/live-research/suggestions/:id/add", async (c) => 
       );
       programId = p.rows[0].id;
     }
+    const a = g.assessment;
+    if (a) {
+      const label = (x: string) => ({ yes: "Yes", not_found: "None found", unknown: "Unknown", third_party: "Professionally managed", in_house: "Managed in-house" } as Record<string, string>)[x] ?? x;
+      const fit = [
+        `Culturosity fit (live search assessment): ${String(a.fit?.rating ?? "").replace(/^./, (m: string) => m.toUpperCase())} — recommended: ${a.fit?.recommended_service ?? ""}`,
+        ...(a.fit?.reasons ?? []).map((r: string) => `• ${r}`),
+        `Mobile app: ${label(a.mobile_app?.status)}${a.mobile_app?.details ? ` (${a.mobile_app.details})` : ""}`,
+        `Management: ${label(a.management?.status)}${a.management?.manager ? ` by ${a.management.manager}` : ""}${a.management?.details ? ` — ${a.management.details}` : ""}`,
+      ].join("\n");
+      await q.query(`update research_organizations set fit_assessment = $2 where id = $1`, [orgId, fit.slice(0, 2000)]);
+    }
     if (d) {
       const notes = [
         "Found by live search (with in-depth research) — check the sources before relying on these facts.",
@@ -604,7 +616,8 @@ internalRoutes.post("/internal/live-research/suggestions/:id/add", async (c) => 
       ].filter(Boolean).join("\n");
       await q.query(`update research_organizations set internal_notes = $2, audience = $3 where id = $1`, [orgId, notes.slice(0, 5000), (d.eligibility || "").slice(0, 500)]);
     }
-    const allCitations = [...(g.citations ?? []), ...((d?.citations ?? []) as any[])].filter((c, i, arr) => arr.findIndex((x: any) => x.url === c.url) === i);
+    const assessEv = [...(a?.mobile_app?.evidence ?? []), ...(a?.management?.evidence ?? [])].map((e: any) => ({ url: e.url, title: "", establishes: e.establishes }));
+    const allCitations = [...(g.citations ?? []), ...((d?.citations ?? []) as any[]), ...assessEv].filter((c, i, arr) => arr.findIndex((x: any) => x.url === c.url) === i);
     for (const s of allCitations)
       await q.query(
         `insert into research_sources (organization_id, program_id, url, title, review_level, reviewed_at, note, created_by) values ($1,$2,$3,$4,'web_search',now(),$5,$6)`,

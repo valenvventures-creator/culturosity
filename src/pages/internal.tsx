@@ -1203,7 +1203,7 @@ export function PreviewPage() {
   );
 }
 
-// ======================= Live Search (Claude web search) =======================
+// ======================= Live Search (web research) =======================
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export function LiveSearchPage() {
@@ -1244,7 +1244,7 @@ export function LiveSearchPage() {
     <Wrap>
       <PageHeader title="Live Search" eyebrow="Research Directory" />
       <p className="muted" style={{ marginTop: 0, maxWidth: 800 }}>
-        Ask Claude to search the public web for affinity, employee-discount and member-benefit programs. You get <strong>suggestions with their source pages</strong>.
+        Ask Culturosity to search the public web for affinity, employee-discount and member-benefit programs. You get <strong>suggestions with their source pages</strong>.
         Nothing is added to the directory until you choose <strong>Add to directory</strong>.
       </p>
       {error ? <ErrorAlert error={error} /> : null}
@@ -1289,7 +1289,11 @@ export function LiveSearchPage() {
                 label={
                   <span>
                     <strong>Extra-deep search</strong>
-                    <span className="ls-opt-hint">About 25 searches and 20 pages read, up to 20 suggestions. 3–6 minutes · about $2–$5. Replaces Quick/Deep.</span>
+                    <span className="ls-opt-hint">
+                      About 25 searches and 20 pages read, up to 20 suggestions. Also checks each organization for a <strong>mobile app</strong>, whether its program is{" "}
+                      <strong>professionally managed</strong>, and how good a <strong>fit for Culturosity's affinity services and programs</strong> it is — ranked best fit first.
+                      3–6 minutes · about $2–$5. Replaces Quick/Deep.
+                    </span>
                   </span>
                 }
                 checked={f.extraDeep}
@@ -1349,6 +1353,49 @@ export function LiveSearchPage() {
       ) : null}
       {openId ? <LiveSearchResults id={openId} /> : null}
     </Wrap>
+  );
+}
+
+function AssessmentBlock({ a }: { a: any }) {
+  if (!a) return null;
+  const fit = a.fit ?? {};
+  const app = a.mobile_app ?? {};
+  const mg = a.management ?? {};
+  const appLabel = app.status === "yes" ? "Has a mobile app" : app.status === "not_found" ? "No mobile app found" : "Mobile app: unknown";
+  const mgLabel = mg.status === "third_party" ? `Professionally managed${mg.manager ? ` by ${mg.manager}` : ""}` : mg.status === "in_house" ? "Managed in-house" : "Management: unknown";
+  const evidence = [...(app.evidence ?? []), ...(mg.evidence ?? [])];
+  return (
+    <div className={`ls-assess fit-${fit.rating}`}>
+      <div className="ls-assess-top">
+        <span className="ls-fit">Culturosity fit: {fit.rating === "strong" ? "Strong" : fit.rating === "weak" ? "Weak" : "Possible"}</span>
+        {fit.recommended_service ? <span className="ls-chip">Best match: {fit.recommended_service}</span> : null}
+        <span className="ls-chip">{appLabel}</span>
+        <span className="ls-chip">{mgLabel}</span>
+      </div>
+      {(fit.reasons ?? []).length ? (
+        <ul>
+          {fit.reasons.map((r: string, i: number) => <li key={i}>{r}</li>)}
+        </ul>
+      ) : null}
+      {app.details || mg.details ? (
+        <div className="muted" style={{ fontSize: ".82rem" }}>
+          {app.details ? <>App: {app.details}. </> : null}
+          {mg.details ? <>Management: {mg.details}</> : null}
+        </div>
+      ) : null}
+      {evidence.length ? (
+        <div className="muted" style={{ fontSize: ".8rem", marginTop: 4 }}>
+          Evidence:{" "}
+          {evidence.map((e: any, i: number) => (
+            <span key={i}>
+              {i ? " · " : ""}
+              <a href={e.url} target="_blank" rel="noopener noreferrer" title={e.establishes}>{e.url.replace(/^https?:\/\//, "").slice(0, 60)}</a>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="muted" style={{ fontSize: ".75rem", marginTop: 4 }}>The fit rating is an assessment from the search — use your judgement.</div>
+    </div>
   );
 }
 
@@ -1485,6 +1532,7 @@ function LiveSearchResults({ id }: { id: string }) {
                       Official site: <a href={g.official_url} target="_blank" rel="noopener noreferrer">{g.official_url.replace(/^https?:\/\//, "")}</a>
                     </p>
                   ) : null}
+                  <AssessmentBlock a={g.assessment} />
                   <DeepDive g={g} />
                   <details>
                     <summary>Sources ({g.citations.length})</summary>
