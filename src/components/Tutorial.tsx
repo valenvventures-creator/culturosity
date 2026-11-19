@@ -393,13 +393,16 @@ export function TutorialPage() {
 
           {/* ---------------- Demo Guide ---------------- */}
           <Section id="demo" n={6} title="Demo Guide" intro="Your script for a live demonstration, using real pages of the Culturosity website." open={{ to: `${B}/demo-guide`, label: "Open Demo Guide" }}>
-            <Shot src="10-demo-guide" alt="The Demo Guide" caption="Eight steps, each with an Open button that opens the page in a new tab." />
+            <Shot src="10-demo-guide" alt="The Demo Guide" caption="Nine steps, each with an Open button that opens the page in a new tab." />
             <Steps>
               <li>Before the meeting, download the Culturosity app onto your phone (App Store or Google Play) and practise the steps once.</li>
               <li>
                 In the meeting, keep the Demo Guide open and select <strong>Open</strong> on each step. The page opens in a new tab; switch back to the guide for the next step.
               </li>
-              <li>Show the website first, then the app on your phone (step 4), then close with a proposal request together (step 8).</li>
+              <li>
+                Show the website first, then the app on your phone (step 4). In step 8, open the <strong>Preview</strong> and complete its steps 1–3 (company and
+                logo, colours, About page) so the prospect sees what their own affinity app could look like. Then close with a proposal request together (step 9).
+              </li>
             </Steps>
             <Tip kind="important">Look around freely, but don't submit forms during a demo unless you mean to — for example, submitting a perk sends a real perk to Culturosity for review.</Tip>
           </Section>
