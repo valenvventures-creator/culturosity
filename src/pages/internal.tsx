@@ -1217,7 +1217,7 @@ export function LiveSearchPage() {
     queryFn: () => api.get("/internal/live-research"),
     refetchInterval: (q) => ((q.state.data as any)?.searches ?? []).some((x: any) => x.status === "queued" || x.status === "running") ? 4000 : false,
   });
-  const [f, setF] = useState({ query: "", country: [] as string[], region: "", prospectType: "", sector: "", depth: "quick" });
+  const [f, setF] = useState({ query: "", country: [] as string[], region: "", prospectType: "", sector: "", depth: "quick", extraDeep: false, deepDive: false });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const toggleCountry = (c: string) => setF((x) => ({ ...x, country: x.country.includes(c) ? x.country.filter((y) => y !== c) : [...x.country, c] }));
@@ -1230,7 +1230,7 @@ export function LiveSearchPage() {
       const r = await api.post<{ id: string }>("/internal/live-research", f);
       await qc.invalidateQueries({ queryKey: ["internal", "live"] });
       setSp({ search: r.id });
-      toast(f.depth === "deep" ? "Deep search started — usually 1–3 minutes" : "Search started — usually under a minute");
+      toast(f.extraDeep ? "Extra-deep search started — usually 3–6 minutes" : f.depth === "deep" ? "Deep search started — usually 1–3 minutes" : "Search started — usually under a minute");
     } catch (x) {
       setErrors((x as ApiError).fields ?? {});
       toast((x as Error).message, "error");
@@ -1279,10 +1279,41 @@ export function LiveSearchPage() {
               <option value="">Any type</option>
               {PROSPECT_TYPES.map((t) => <option key={t} value={t}>{PROSPECT_TYPE_LABELS[t]}</option>)}
             </SelectField>
-            <div className="segmented" role="group" aria-label="Search depth">
-              <button type="button" aria-pressed={f.depth === "quick"} onClick={() => setF({ ...f, depth: "quick" })}>Quick · about 10–30¢</button>
-              <button type="button" aria-pressed={f.depth === "deep"} onClick={() => setF({ ...f, depth: "deep" })}>Deep · about 50¢–$1.50</button>
+            <div className="segmented" role="group" aria-label="Search depth" aria-disabled={f.extraDeep}>
+              <button type="button" disabled={f.extraDeep} aria-pressed={!f.extraDeep && f.depth === "quick"} onClick={() => setF({ ...f, depth: "quick" })}>Quick · about 10–30¢</button>
+              <button type="button" disabled={f.extraDeep} aria-pressed={!f.extraDeep && f.depth === "deep"} onClick={() => setF({ ...f, depth: "deep" })}>Deep · about 50¢–$1.50</button>
             </div>
+            <fieldset className="ls-options">
+              <legend>Optional — tick to turn on</legend>
+              <Checkbox
+                label={
+                  <span>
+                    <strong>Extra-deep search</strong>
+                    <span className="ls-opt-hint">About 25 searches and 20 pages read, up to 20 suggestions. 3–6 minutes · about $2–$5. Replaces Quick/Deep.</span>
+                  </span>
+                }
+                checked={f.extraDeep}
+                onChange={(v) => setF({ ...f, extraDeep: v })}
+              />
+              <Checkbox
+                label={
+                  <span>
+                    <strong>Research each suggestion in depth</strong>
+                    <span className="ls-opt-hint">
+                      After the search, a focused deep dive on each organization found (up to 8): program details, perk categories, eligibility, who runs it and the
+                      public contact page, all with sources. About 50¢–$2 each.
+                    </span>
+                  </span>
+                }
+                checked={f.deepDive}
+                onChange={(v) => setF({ ...f, deepDive: v })}
+              />
+            </fieldset>
+            {f.extraDeep || f.deepDive ? (
+              <div className="alert alert-info" style={{ margin: 0, fontSize: ".85rem" }}>
+                Estimated cost up to about <strong>{money(Math.round((f.extraDeep ? 500 : f.depth === "deep" ? 150 : 30) + (f.deepDive ? 8 * 200 : 0)))}</strong>. It stops early if the monthly budget runs out.
+              </div>
+            ) : null}
             <button className="btn btn-primary" disabled={busy || !data.configured || data.spentCents >= data.limitCents}>
               {busy ? "Starting…" : "Search the web"}
             </button>
@@ -1303,7 +1334,7 @@ export function LiveSearchPage() {
                     <button type="button" className={`ls-item ${openId === s.id ? "on" : ""}`} onClick={() => setSp({ search: s.id })}>
                       <span className="ls-q">{s.query}</span>
                       <span className="muted" style={{ fontSize: ".8rem" }}>
-                        {s.status === "done" ? `${s.found} found${s.open ? ` · ${s.open} to review` : ""}` : s.status === "failed" ? "Failed" : "Searching…"} · {s.depth} ·{" "}
+                        {s.status === "done" ? `${s.found} found${s.open ? ` · ${s.open} to review` : ""}` : s.status === "failed" ? "Failed" : "Searching…"} · {s.depth === "extra" ? "extra-deep" : s.depth}{s.deep_dive ? " + in-depth" : ""} ·{" "}
                         {new Date(s.created_at).toLocaleDateString()} · {s.requested_by_name ?? ""}
                       </span>
                     </button>
@@ -1321,13 +1352,75 @@ export function LiveSearchPage() {
   );
 }
 
+function DeepDive({ g }: { g: any }) {
+  if (g.dive_status === "none") return null;
+  if (g.dive_status === "queued" || g.dive_status === "running")
+    return (
+      <div className="ls-dive ls-dive-busy">
+        <Spinner label="Researching in depth" /> <span>Researching in depth… usually 1–2 minutes.</span>
+      </div>
+    );
+  if (g.dive_status === "failed") return <div className="ls-dive muted">In-depth research didn't finish: {g.dive_error}</div>;
+  const d = g.details ?? {};
+  const rows: [string, string][] = [
+    ["Program", d.program_name],
+    ["What it offers", d.program_summary],
+    ["Who can use it", d.eligibility],
+    ["Where", d.coverage],
+    ["Perk categories", (d.perk_categories ?? []).join(", ")],
+    ["Cost to members", d.member_cost],
+    ["Run by", d.operator],
+    ["Size", d.audience_size],
+    ["Contact page", d.contact_url],
+    ["Public email", d.public_email],
+    ["Public phone", d.public_phone],
+    ["Notes", d.notes],
+  ].filter(([, v]) => v) as [string, string][];
+  return (
+    <details className="ls-dive" open>
+      <summary>In-depth research · {money(g.dive_cost_cents)}</summary>
+      <dl>
+        {rows.map(([k, v]) => (
+          <div key={k}>
+            <dt>{k}</dt>
+            <dd>
+              {k === "Contact page" ? (
+                <a href={v} target="_blank" rel="noopener noreferrer">{v.replace(/^https?:\/\//, "")}</a>
+              ) : k === "Public email" ? (
+                <a href={`mailto:${v}`}>{v}</a>
+              ) : (
+                v
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {(d.citations ?? []).length ? (
+        <div className="muted" style={{ fontSize: ".82rem" }}>
+          Sources:{" "}
+          {d.citations.map((c: any, i: number) => (
+            <span key={i}>
+              {i ? " · " : ""}
+              <a href={c.url} target="_blank" rel="noopener noreferrer">{c.title || c.url}</a>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </details>
+  );
+}
+
 function LiveSearchResults({ id }: { id: string }) {
   const qc = useQueryClient();
   const toast = useToast();
   const { data, error } = useQuery<any>({
     queryKey: ["internal", "live", id],
     queryFn: () => api.get(`/internal/live-research/${id}`),
-    refetchInterval: (q) => (["queued", "running"].includes((q.state.data as any)?.search?.status) ? 3000 : false),
+    refetchInterval: (q) => {
+      const d = q.state.data as any;
+      const busy = ["queued", "running"].includes(d?.search?.status) || (d?.suggestions ?? []).some((g: any) => g.dive_status === "queued" || g.dive_status === "running");
+      return busy ? 3000 : false;
+    },
   });
   useEffect(() => {
     if (data?.search?.status === "done" || data?.search?.status === "failed") qc.invalidateQueries({ queryKey: ["internal", "live"], exact: true });
@@ -1351,12 +1444,12 @@ function LiveSearchResults({ id }: { id: string }) {
           <div className="eyebrow">Search results</div>
           <h2 style={{ fontSize: "1.2rem", margin: "4px 0" }}>{s.query}</h2>
           <div className="muted" style={{ fontSize: ".85rem" }}>
-            {s.depth === "deep" ? "Deep" : "Quick"} search · {s.web_searches} web searches · cost {money(s.cost_cents)}
+            {s.depth === "extra" ? "Extra-deep" : s.depth === "deep" ? "Deep" : "Quick"} search{s.deep_dive ? " + in-depth research" : ""} · {s.web_searches} web searches · cost so far {money(s.cost_cents)}
           </div>
         </div>
       </div>
       {s.status === "queued" || s.status === "running" ? (
-        <div className="ls-running"><Spinner label="Searching the web" /> <span>Searching and reading pages… {s.depth === "deep" ? "usually 1–3 minutes" : "usually under a minute"}. You can leave this page; results are saved.</span></div>
+        <div className="ls-running"><Spinner label="Searching the web" /> <span>Searching and reading pages… {s.depth === "extra" ? "usually 3–6 minutes" : s.depth === "deep" ? "usually 1–3 minutes" : "usually under a minute"}. You can leave this page; results are saved.</span></div>
       ) : s.status === "failed" ? (
         <div className="alert alert-error" style={{ marginTop: 12 }}>The search didn't finish: {s.error}</div>
       ) : (
@@ -1392,6 +1485,7 @@ function LiveSearchResults({ id }: { id: string }) {
                       Official site: <a href={g.official_url} target="_blank" rel="noopener noreferrer">{g.official_url.replace(/^https?:\/\//, "")}</a>
                     </p>
                   ) : null}
+                  <DeepDive g={g} />
                   <details>
                     <summary>Sources ({g.citations.length})</summary>
                     <ul>

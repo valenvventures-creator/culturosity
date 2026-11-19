@@ -485,6 +485,9 @@ const liveSearchSchema = z.object({
   prospectType: z.union([z.enum(["employer", "association", "operator", "merchant"]), z.literal("")]).default(""),
   sector: z.string().trim().max(120).default(""),
   depth: z.enum(["quick", "deep"]).default("quick"),
+  // Opt-in options, both off unless ticked.
+  extraDeep: z.boolean().default(false),
+  deepDive: z.boolean().default(false),
 });
 
 internalRoutes.get("/internal/live-research", async (c) => {
@@ -492,7 +495,7 @@ internalRoutes.get("/internal/live-research", async (c) => {
   const { db, config } = c.get("deps");
   const { monthlySpend } = await import("../lib/liveResearch");
   const searches = await db.query(
-    `select s.id, s.query, s.country, s.region, s.prospect_type, s.sector, s.depth, s.status, s.web_searches, s.cost_cents, s.error, s.summary,
+    `select s.id, s.query, s.country, s.region, s.prospect_type, s.sector, s.depth, s.deep_dive, s.status, s.web_searches, s.cost_cents, s.error, s.summary,
             s.created_at, s.finished_at, u.display_name as requested_by_name,
             (select count(*)::int from research_suggestions g where g.search_id = s.id) as found,
             (select count(*)::int from research_suggestions g where g.search_id = s.id and g.status = 'new') as open
@@ -517,19 +520,19 @@ internalRoutes.post("/internal/live-research", async (c) => {
   const running = await db.query<{ n: number }>(`select count(*)::int as n from research_searches where requested_by = $1 and status in ('queued','running') and created_at > now() - interval '20 minutes'`, [user.id]);
   if (running.rows[0].n >= 2) throw new AppError(429, "busy", "You already have searches running. Wait for them to finish.");
   const token = randomToken(24);
+  const origin = new URL(c.req.url).origin;
   const r = await db.query<{ id: string }>(
-    `insert into research_searches (requested_by, query, country, region, prospect_type, sector, depth, run_token_hash)
-     values ($1,$2,$3::text[],$4,$5,$6,$7,$8) returning id`,
-    [user.id, b.query, b.country, b.region, b.prospectType, b.sector, b.depth, sha256(token)],
+    `insert into research_searches (requested_by, query, country, region, prospect_type, sector, depth, run_token_hash, deep_dive, origin)
+     values ($1,$2,$3::text[],$4,$5,$6,$7,$8,$9,$10) returning id`,
+    [user.id, b.query, b.country, b.region, b.prospectType, b.sector, b.extraDeep ? "extra" : b.depth, sha256(token), b.deepDive, origin],
   );
   const id = r.rows[0].id;
   if (config.isNetlify) {
     // Netlify background function (up to 15 minutes); it answers 202 immediately.
-    const origin = new URL(c.req.url).origin;
     const res = await fetch(`${origin}/.netlify/functions/research-search-background`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, token }),
+      body: JSON.stringify({ id, token, origin }),
     }).catch((e) => ({ ok: false, status: 0, statusText: (e as Error).message }) as any);
     if (!res.ok && res.status !== 202) {
       await db.query(`update research_searches set status = 'failed', error = $2, finished_at = now() where id = $1`, [id, `Couldn't start the search (${res.status}).`]);
@@ -581,15 +584,28 @@ internalRoutes.post("/internal/live-research/suggestions/:id/add", async (c) => 
     );
     const orgId = r.rows[0].id;
     let programId: string | null = null;
-    if (g.program_name || g.summary) {
+    const d = g.dive_status === "done" ? g.details : null; // in-depth research, when it was run
+    if (g.program_name || g.summary || d) {
       const p = await q.query<{ id: string }>(
-        `insert into research_programs (organization_id, name, summary, official_website, verification_status, last_checked_at)
-         values ($1,$2,$3,$4,'needs_review',now()) returning id`,
-        [orgId, g.program_name || `${g.organization} program`, g.summary || "", g.official_url || null],
+        `insert into research_programs (organization_id, name, summary, coverage, perk_categories, eligibility, pricing, official_website, contact_url,
+           public_email, public_phone, verification_status, last_checked_at)
+         values ($1,$2,$3,$4,$5::text[],$6,$7,$8,$9,$10,$11,'needs_review',now()) returning id`,
+        [orgId, d?.program_name || g.program_name || `${g.organization} program`, d?.program_summary || g.summary || "", d?.coverage ?? "", d?.perk_categories ?? [],
+         d?.eligibility ?? "", d?.member_cost ?? "", g.official_url || null, d?.contact_url || null, d?.public_email || null, d?.public_phone || null],
       );
       programId = p.rows[0].id;
     }
-    for (const s of g.citations ?? [])
+    if (d) {
+      const notes = [
+        "Found by live search (with in-depth research) — check the sources before relying on these facts.",
+        d.operator ? `Operated by: ${d.operator}` : "",
+        d.audience_size ? `Audience size: ${d.audience_size}` : "",
+        d.notes ? `Notes: ${d.notes}` : "",
+      ].filter(Boolean).join("\n");
+      await q.query(`update research_organizations set internal_notes = $2, audience = $3 where id = $1`, [orgId, notes.slice(0, 5000), (d.eligibility || "").slice(0, 500)]);
+    }
+    const allCitations = [...(g.citations ?? []), ...((d?.citations ?? []) as any[])].filter((c, i, arr) => arr.findIndex((x: any) => x.url === c.url) === i);
+    for (const s of allCitations)
       await q.query(
         `insert into research_sources (organization_id, program_id, url, title, review_level, reviewed_at, note, created_by) values ($1,$2,$3,$4,'web_search',now(),$5,$6)`,
         [orgId, programId, s.url, s.title || "", `Found by live search: ${s.establishes || ""}`.slice(0, 1000), user.id],

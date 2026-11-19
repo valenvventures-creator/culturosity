@@ -751,6 +751,28 @@ describe("live research search (no real API calls)", () => {
     expect((await sales.post(`/internal/live-research/suggestions/${a}/add`)).status).toBe(400); // already handled
 
     expect((await sales.post(`/internal/live-research/suggestions/${b}/dismiss`)).status).toBe(200);
+
+    // A suggestion with finished in-depth research: Add carries the sourced details over.
+    const c = await mk("Third Example Guild", "https://third-guild.example");
+    await ctx.db.query(
+      `update research_suggestions set dive_status = 'done', dive_cost_cents = 80, details = $2::jsonb where id = $1`,
+      [c, JSON.stringify({
+        program_name: "Guild Perks", program_summary: "Travel and dining discounts.", eligibility: "Guild members", coverage: "Manitoba",
+        perk_categories: ["Travel", "Dining"], member_cost: "Free", operator: "PerkCo", audience_size: "3,000 members (2026)",
+        contact_url: "https://third-guild.example/contact", public_email: "info@third-guild.example", public_phone: "", notes: "",
+        citations: [{ url: "https://third-guild.example/benefits", title: "Benefits", establishes: "Lists the perks" }],
+      })],
+    );
+    const addedC = await sales.post(`/internal/live-research/suggestions/${c}/add`);
+    expect(addedC.status).toBe(201);
+    const recC = (await sales.get(`/internal/research/${addedC.json.id}`)).json;
+    expect(recC.programs[0]).toMatchObject({ name: "Guild Perks", coverage: "Manitoba", eligibility: "Guild members", public_email: "info@third-guild.example" });
+    expect(recC.programs[0].perk_categories).toEqual(["Travel", "Dining"]);
+    expect(recC.record.internal_notes).toContain("Operated by: PerkCo");
+    expect(recC.sources.map((x: any) => x.url).sort()).toEqual(["https://third-guild.example/benefits", "https://third-guild.example/perks"]);
+
+    // The options are accepted (still refused here only because no API key is configured).
+    expect((await sales.post("/internal/live-research", { query: "credit unions in Ontario", extraDeep: true, deepDive: true })).status).toBe(503);
     expect((await sales.get(`/internal/live-research`)).json.spentCents).toBe(12);
   });
 });

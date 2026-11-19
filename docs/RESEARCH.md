@@ -30,6 +30,7 @@ The 20 records from the master prompt (§19) reviewed on 2026-11-17, with offici
 Enabled when `ANTHROPIC_API_KEY` is set (model `AI_MODEL`, default `claude-opus-5-5`).
 
 - **Admin Research & Sales → Live Search** (salespeople and super admins). A request plus optional country, province/state, sector and prospect type; Quick (4 searches / 3 page reads) or Deep (12 / 8).
+- Two opt-in checkboxes, off by default: **Extra-deep search** (25 searches / 20 page reads, up to 20 suggestions, high effort) and **Research each suggestion in depth** (up to 8 suggestions; each gets its own job with 6 searches / 6 page reads that returns program details, perk categories, eligibility, coverage, member cost, operator, audience size and a public contact page — only sourced fields are kept). Each in-depth pass runs in its own Netlify background invocation and stops if the monthly budget is used up.
 - Runs as a job: the API queues it and calls the Netlify background function `research-search-background` (up to 15 minutes) with a one-time token; locally it runs in-process. The page polls for results.
 - Claude uses the server-side `web_search_20260209` and `web_fetch_20260209` tools, then calls a strict `submit_candidates` tool. Web content is treated as untrusted data.
 - **Every suggestion must cite pages actually retrieved in that run** (checked against the tool results); unsupported candidates and unverified official URLs are dropped. Organizations already in the directory (name or domain) are skipped.

@@ -108,3 +108,31 @@ describe("live research: only cited, actually-retrieved pages survive", () => {
     expect(costCents({ input: 100_000, output: 5_000, cacheRead: 0, cacheWrite: 0, searches: 4 })).toBe(54); // $0.40 + $0.10 + $0.04
   });
 });
+
+describe("live research: in-depth details", () => {
+  it("keeps only sourced details and drops unverified links and bad emails", async () => {
+    const { cleanDetails, normUrl } = await import("../server/lib/liveResearch");
+    const retrieved = new Set([normUrl("https://union.example/benefits")!]);
+    const hosts = new Set(["union.example"]);
+    const base = {
+      program_name: "Member Perks", program_summary: "Discounts.", eligibility: "Members", coverage: "Manitoba", perk_categories: ["Travel", ""],
+      member_cost: "", operator: "PerkCo", audience_size: "", public_phone: "", notes: "",
+    };
+    const ok = cleanDetails(
+      { ...base, contact_url: "https://union.example/contact", public_email: "info@union.example", citations: [{ url: "https://union.example/benefits/", title: "B", establishes: "perks" }] },
+      retrieved,
+      hosts,
+    )!;
+    expect(ok.contact_url).toBe("https://union.example/contact");
+    expect(ok.public_email).toBe("info@union.example");
+    expect(ok.perk_categories).toEqual(["Travel"]);
+    const bad = cleanDetails(
+      { ...base, contact_url: "https://phish.test/contact", public_email: "not-an-email", citations: [{ url: "https://union.example/benefits", title: "", establishes: "" }] },
+      retrieved,
+      hosts,
+    )!;
+    expect(bad.contact_url).toBe("");
+    expect(bad.public_email).toBe("");
+    expect(cleanDetails({ ...base, contact_url: "", public_email: "", citations: [{ url: "https://never.test", title: "", establishes: "" }] }, retrieved, hosts)).toBeNull();
+  });
+});

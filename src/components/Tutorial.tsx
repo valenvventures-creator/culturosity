@@ -285,6 +285,10 @@ export function TutorialPage() {
               <li>
                 Choose <strong>Quick</strong> (under a minute, about 10–30¢) or <strong>Deep</strong> (1–3 minutes, about 50¢–$1.50), then select <strong>Search the web</strong>.
               </li>
+              <li>
+                Optional — tick only if you need them: <strong>Extra-deep search</strong> (about 25 searches and 20 pages, up to 20 suggestions; 3–6 minutes, about $2–$5) and{" "}
+                <strong>Research each suggestion in depth</strong> (a deep dive on up to 8 organizations found: program details, perk categories, eligibility, who runs it and the public contact page; about 50¢–$2 each). The estimated cost appears before you start.
+              </li>
               <li>Results appear below when ready. You can leave the page — searches are saved under Recent searches.</li>
               <li>
                 For each suggestion, open <strong>Sources</strong> and check the pages. Select <strong>Add to directory</strong> for good fits or <strong>Dismiss</strong> for the rest.
@@ -295,6 +299,7 @@ export function TutorialPage() {
                 ["Suggestion", "An organization the search found. Every one is backed by pages actually retrieved during the search; anything it couldn't support is left out."],
                 ["Sources", "The pages each suggestion is based on, with what each page shows. Always check them before relying on the facts."],
                 ["Found by live search — needs review", "How added records and their sources are labelled until someone reviews the pages. They aren't used for outreach drafts until then."],
+                ["In-depth research", "The extra details shown under a suggestion when you ticked “Research each suggestion in depth”. Only facts the pages state; empty fields mean no page said so. Added to the record when you select Add to directory."],
                 ["Monthly budget", "Live Search stops for everyone when this month's spending limit is reached. The owner sets the limit."],
               ]}
             />

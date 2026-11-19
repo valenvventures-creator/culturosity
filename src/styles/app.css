@@ -3863,3 +3863,68 @@ table.data tr.clickable {
   font-weight: 600;
   font-size: 0.88rem;
 }
+.ls-options {
+  border: 1px solid var(--line-light);
+  border-radius: 12px;
+  padding: 8px 12px 10px;
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.ls-options legend {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0 4px;
+  color: var(--ink-muted, #4b4b57);
+}
+.ls-opt-hint {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--ink-muted, #4b4b57);
+  font-weight: 400;
+}
+.ls-dive {
+  margin-top: 10px;
+  background: #f4fbf8;
+  border: 1px solid #cdeee1;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.ls-dive-busy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ls-dive summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.ls-dive dl {
+  margin: 8px 0;
+  display: grid;
+  gap: 4px;
+}
+.ls-dive dl > div {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 10px;
+}
+.ls-dive dt {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.ls-dive dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  .ls-dive dl > div {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+.segmented button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
