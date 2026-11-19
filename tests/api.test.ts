@@ -767,7 +767,13 @@ describe("adding another super admin", () => {
     expect((await second.get("/internal/team")).status).toBe(200);
     expect((await second.post(`/internal/team/${me}/delete-account`, { password: PW2 })).status).toBe(403);
     expect((await second.post(`/internal/team/${me}/remove-super-admin`, { password: PW2 })).status).toBe(403);
-    expect((await second.post(`/internal/team/${repId}/remove-super-admin`, { password: PW2 })).status).toBe(400); // not yourself
+    // Only the primary owner can add, remove or delete super admins.
+    expect((await second.post(`/internal/team/${repId}/remove-super-admin`, { password: PW2 })).status).toBe(403);
+    const { passwordAuth: pa } = await import("../server/lib/auth");
+    const thirdId = await ctx.db.tx((q) => pa.createPasswordUser(q, { email: "third.rep@example.com", password: PW2, displayName: "Third", verified: true }));
+    await ctx.db.query(`insert into platform_grants (user_id, grant_name) values ($1,'sales_admin')`, [thirdId]);
+    expect((await second.post(`/internal/team/${thirdId}/make-super-admin`, { password: PW2 })).status).toBe(403);
+    expect((await ctx.db.query(`select 1 from platform_grants where user_id = $1 and grant_name = 'super_admin'`, [thirdId])).rows).toHaveLength(0);
     expect((await ctx.db.query(`select 1 from platform_grants where user_id = $1 and grant_name = 'super_admin' and revoked_at is null`, [me])).rows).toHaveLength(1);
 
     // The primary owner can turn them back into a salesperson.

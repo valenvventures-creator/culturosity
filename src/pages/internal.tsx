@@ -1964,6 +1964,9 @@ export function SalesTeamPage() {
   const [emailErr, setEmailErr] = useState<string | undefined>();
   const [created, setCreated] = useState<{ email: string; link: string; expiresAt: string; emailed: boolean; emailConfigured?: boolean; emailError?: string } | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ["internal", "team"] });
+  // Only the primary owner sees super admin controls (the server enforces this too).
+  // With no primary recorded yet, the first super admin to promote someone becomes it.
+  const isPrimary = Boolean(data && me?.user?.id && (data.primaryId ? data.primaryId === me.user.id : true));
   if (!me?.grants?.includes("super_admin")) return <Wrap><EmptyState title="Super admin only" /></Wrap>;
 
   async function copy(text: string) {
@@ -1982,10 +1985,10 @@ export function SalesTeamPage() {
         Salespeople get Admin Research &amp; Sales only — Overview, Research Directory, Sales Outreach, Pipeline, Demo Guide and the Service queue. They
         can’t see the catalogue, client workspaces or settings, and they still need the access code to open the area.
       </p>
-      <p className="muted" style={{ maxWidth: 720 }}>
+      {isPrimary ? <p className="muted" style={{ maxWidth: 720 }}>
         <strong>Adding another super admin:</strong> add them as a salesperson first, then choose <em>Make super admin…</em> next to their name once they’ve
-        signed up. Super admins have the same capabilities as you, except that nobody can delete or demote the <strong>primary owner</strong> account.
-      </p>
+        signed up. Super admins have the same capabilities as you, except that only you (the <strong>primary owner</strong>) can add, remove or delete super admins, and nobody can delete or demote your account.
+      </p> : null}
       <div className="grid-2" style={{ alignItems: "start" }}>
         <form
           className="panel"
@@ -2043,7 +2046,7 @@ export function SalesTeamPage() {
                         <div style={{ display: "grid", gap: 4, justifyItems: "start" }}>
                           {t.grant_name === "sales_admin" ? (
                             <>
-                              <PasswordAction
+                              {isPrimary ? <PasswordAction
                                 label="Make super admin…"
                                 path={`/internal/team/${t.id}/make-super-admin`}
                                 done={`${t.email} is now a super admin`}
@@ -2055,7 +2058,7 @@ export function SalesTeamPage() {
                                   </>
                                 }
                                 onDone={refresh}
-                              />
+                              /> : null}
                               <button
                                 className="btn btn-ghost btn-sm"
                                 onClick={async () => {
@@ -2076,7 +2079,7 @@ export function SalesTeamPage() {
                             <span className="muted" style={{ fontSize: ".82rem" }}>You</span>
                           ) : t.id === data.primaryId ? (
                             <span className="muted" style={{ fontSize: ".82rem" }}>Protected</span>
-                          ) : (
+                          ) : !isPrimary ? null : (
                             <>
                               <PasswordAction
                                 label="Remove super admin…"

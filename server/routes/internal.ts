@@ -984,11 +984,19 @@ internalRoutes.delete("/internal/team/invitations/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** Delete another super admin's account entirely (super admins only, password required). */
+/** Adding, removing or deleting super admins is for the primary owner only. */
+async function requirePrimaryOwner(db: any, userId: string) {
+  // With no primary recorded yet (more than one older super admin), the first to act becomes it.
+  await claimPrimaryIfUnset(db, userId);
+  if ((await primarySuperAdminId(db)) !== userId) throw forbidden("Only the primary owner can add, remove or delete super admins.");
+}
+
+/** Delete another super admin's account entirely (primary owner only, password required). */
 internalRoutes.post("/internal/team/:userId/delete-account", async (c) => {
   const { user } = await requireUnlock(c, ["super_admin"]);
   const { db } = c.get("deps");
   await rateLimit(db, `admin-delete:${user.id}`, 10, 3600);
+  await requirePrimaryOwner(db, user.id);
   const target = c.req.param("userId");
   if (target === user.id) throw badRequest("You can't delete your own account here.");
   const { password } = (await c.req.json().catch(() => ({}))) as { password?: string };
@@ -1024,11 +1032,12 @@ async function confirmPassword(c: any, user: { id: string; email: string }) {
   if (!ok || ok.id !== user.id) throw badRequest("Your password is incorrect.", { password: "Incorrect password" });
 }
 
-/** Promote a salesperson to super admin (super admins only, password required). */
+/** Promote a salesperson to super admin (primary owner only, password required). */
 internalRoutes.post("/internal/team/:userId/make-super-admin", async (c) => {
   const { user } = await requireUnlock(c, ["super_admin"]);
   const { db } = c.get("deps");
   await rateLimit(db, `admin-promote:${user.id}`, 10, 3600);
+  await requirePrimaryOwner(db, user.id);
   const target = c.req.param("userId");
   await confirmPassword(c, user);
   const t = await db.query<{ email: string }>(
@@ -1037,8 +1046,6 @@ internalRoutes.post("/internal/team/:userId/make-super-admin", async (c) => {
     [target],
   );
   if (!t.rows[0]) throw notFound("Only a current salesperson can be made a super admin. Add them as a salesperson first.");
-  // Whoever adds the first additional super admin is recorded as the primary owner (if none is yet).
-  await claimPrimaryIfUnset(db, user.id);
   await db.tx(async (q) => {
     await q.query(`insert into platform_grants (user_id, grant_name, granted_by) values ($1,'super_admin',$2) on conflict do nothing`, [target, user.id]);
     await q.query(`update platform_grants set revoked_at = now() where user_id = $1 and grant_name = 'sales_admin' and revoked_at is null`, [target]);
@@ -1057,11 +1064,12 @@ internalRoutes.post("/internal/team/:userId/make-super-admin", async (c) => {
   return c.json({ ok: true });
 });
 
-/** Turn another super admin back into a salesperson (never yourself or the primary owner). */
+/** Turn another super admin back into a salesperson (primary owner only). */
 internalRoutes.post("/internal/team/:userId/remove-super-admin", async (c) => {
   const { user } = await requireUnlock(c, ["super_admin"]);
   const { db } = c.get("deps");
   await rateLimit(db, `admin-demote:${user.id}`, 10, 3600);
+  await requirePrimaryOwner(db, user.id);
   const target = c.req.param("userId");
   if (target === user.id) throw badRequest("You can't remove your own super admin access.");
   await confirmPassword(c, user);
