@@ -3965,3 +3965,70 @@ table.data tr.clickable {
   margin: 6px 0 4px;
   padding-left: 18px;
 }
+
+/* Home page phone: swoops in from the right, then scrolls through perks */
+.phone-slot {
+  flex-shrink: 0;
+}
+.phone-enter {
+  /* Waits off to the right until its slot scrolls into view, then swoops in. */
+  opacity: 0;
+  transform: translateX(110vw) rotate(14deg) scale(0.92);
+}
+.phone-slot.in-view .phone-enter {
+  animation: phone-swoop 1.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (max-width: 1039px) {
+  .phone-slot {
+    margin: 0 auto; /* centred on phones and tablets */
+  }
+}
+@keyframes phone-swoop {
+  0% {
+    transform: translateX(110vw) rotate(14deg) scale(0.92);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  70% {
+    transform: translateX(-14px) rotate(-3deg) scale(1.01);
+  }
+  100% {
+    transform: translateX(0) rotate(0) scale(1);
+    opacity: 1;
+  }
+}
+.phone-list {
+  position: relative;
+}
+.phone-slot.in-view .phone-scroller.is-scrolling {
+  /* Starts once the phone has landed; the list is doubled so -50% loops seamlessly. */
+  animation: phone-scroll var(--scroll-duration, 30s) linear 1.5s infinite;
+  will-change: transform;
+}
+.phone-slot.in-view .phone:hover .phone-scroller.is-scrolling {
+  animation-play-state: paused;
+}
+@keyframes phone-scroll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .phone-enter,
+  .phone-slot.in-view .phone-enter {
+    opacity: 1;
+    transform: none;
+  }
+  .phone-enter,
+  .phone,
+  .phone-scroller.is-scrolling,
+  .phone-slot.in-view .phone-enter,
+  .phone-slot.in-view .phone-scroller.is-scrolling {
+    animation: none !important;
+  }
+}
