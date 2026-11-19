@@ -336,6 +336,8 @@ perkRoutes.post("/redemption-tokens", async (c) => {
     manualCode: `${code.slice(0, 5)}-${code.slice(5)}`,
     providerRef: prov.rows[0].provider_ref,
     expiresAt: expires.toISOString(),
+    // Lets the card count down from when it receives the code, whatever the device's clock says.
+    expiresInSeconds: 600,
   });
 });
 

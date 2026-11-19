@@ -10,6 +10,9 @@ interface Token {
   manualCode: string;
   providerRef: string;
   expiresAt: string;
+  expiresInSeconds?: number;
+  /** Local time the code arrived (performance clock, not the device's wall clock). */
+  receivedAt?: number;
 }
 
 function useQrSvg(payload: string | null | undefined) {
@@ -58,25 +61,31 @@ export function MemberCard({
   const [token, setToken] = useState<Token | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => performance.now());
   const toast = useToast();
   const perkSvg = useQrSvg(perkQr);
   const tokenSvg = useQrSvg(token?.qrPayload);
 
   useEffect(() => {
     if (!token) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    const t = setInterval(() => setNow(performance.now()), 1000);
     return () => clearInterval(t);
   }, [token]);
 
-  const remaining = token ? Math.min(600, Math.max(0, Math.floor((new Date(token.expiresAt).getTime() - now) / 1000))) : 0;
+  // Count down from when the code arrived, so a wrong device clock can't make a new code look expired.
+  // (The server still enforces the real expiry.)
+  const ttl = token ? token.expiresInSeconds ?? 600 : 0;
+  const remaining = token ? Math.min(ttl, Math.max(0, Math.floor(ttl - (now - (token.receivedAt ?? now)) / 1000))) : 0;
   const expired = token && remaining === 0;
 
   async function issue() {
     setBusy(true);
     setErr(null);
     try {
-      setToken(await api.post<Token>("/redemption-tokens", { programId, perkId }));
+      const t = await api.post<Token>("/redemption-tokens", { programId, perkId });
+      const at = performance.now();
+      setNow(at);
+      setToken({ ...t, receivedAt: at });
     } catch (e: any) {
       setErr(e.message);
       toast(e.message, "error");
