@@ -404,6 +404,7 @@ export function TutorialPage() {
                 logo, colours, About page) so the prospect sees what their own affinity app could look like. Then close with a proposal request together (step 9).
               </li>
             </Steps>
+            <Shot src="16-demo-guide-end" alt="Demo Guide steps 7 to 9" caption="The end of the demo: the three approaches (step 7), the branded Preview (step 8) and the proposal request (step 9)." />
             <Tip kind="important">Look around freely, but don't submit forms during a demo unless you mean to — for example, submitting a perk sends a real perk to Culturosity for review.</Tip>
           </Section>
 
