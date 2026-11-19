@@ -250,7 +250,14 @@ export function ResearchPage() {
         </div>
       ) : null}
       <div className="alert alert-info" style={{ marginBottom: 14, fontSize: ".88rem" }}>
-        {connector?.note ?? "Loading connector status…"} Many programs are private or not described online; this directory is never a complete list.
+        {connector?.liveSearch === "configured" ? (
+          <>
+            Looking for new programs? Use <Link to={`${B}/live-search`}>Live Search</Link> — it finds organizations online and suggests them with sources for you to review.{" "}
+          </>
+        ) : (
+          <>{connector?.note ?? "Loading connector status…"} </>
+        )}
+        Many programs are private or not described online; this directory is never a complete list.
       </div>
       <div className="panel" style={{ marginBottom: 14 }}>
         <div className="grid-3">

@@ -3812,6 +3812,7 @@ table.data tr.clickable {
   width: 100%;
   text-align: left;
   font: inherit;
+  color: var(--ink);
   cursor: pointer;
   border: 1px solid var(--line-light);
   background: #fff;

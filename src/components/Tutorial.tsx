@@ -278,6 +278,7 @@ export function TutorialPage() {
               Finds new affinity, employee-discount and member-benefit programs on the public web for you. Culturosity searches, reads the pages and returns{" "}
               <strong>suggestions with their sources</strong>. Nothing goes into the directory until you add it.
             </p>
+            <Shot src="14-live-search" alt="The Live Search form with the optional checkboxes" caption="A new search on the left (with both optional checkboxes ticked), and your recent searches on the right." />
             <Steps>
               <li>
                 Describe what you're looking for in plain words, e.g. “Teachers' associations in Manitoba that offer member discount programs”.
@@ -295,6 +296,11 @@ export function TutorialPage() {
                 For each suggestion, open <strong>Sources</strong> and check the pages. Select <strong>Add to directory</strong> for good fits or <strong>Dismiss</strong> for the rest.
               </li>
             </Steps>
+            <Shot
+              src="15-live-results"
+              alt="Live Search results with the Culturosity fit assessment and in-depth research"
+              caption="An example result: the Culturosity fit panel (from Extra-deep search) and the in-depth research details, with Add to directory and Dismiss."
+            />
             <Terms
               items={[
                 ["Suggestion", "An organization the search found. Every one is backed by pages actually retrieved during the search; anything it couldn't support is left out."],
