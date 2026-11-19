@@ -376,7 +376,7 @@ authRoutes.get("/config", async (c) => {
       storage: storage.driver,
       email: email.configured ? "resend" : "outbox-only",
       ai: ai.configured ? "configured" : "not-configured",
-      researchSearch: research.searchConfigured ? "configured" : "not-configured",
+      researchSearch: research.searchConfigured ? "claude-web-search" : "not-configured",
       pos: "server-verified-qr-and-manual-code",
     },
   });

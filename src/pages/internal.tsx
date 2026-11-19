@@ -45,7 +45,7 @@ export function InternalLayout() {
   return (
     <AppShell
       sections={[
-        { title: "Internal", items: [{ to: `${B}/overview`, label: "Overview" }, { to: `${B}/research`, label: "Research Directory" }, { to: `${B}/outreach`, label: "Sales Outreach" }, { to: `${B}/pipeline`, label: "Pipeline" }, { to: `${B}/demo-guide`, label: "Demo Guide" }, { to: `${B}/preview`, label: "Preview" }, { to: `${B}/tutorial`, label: "Tutorial" }] },
+        { title: "Internal", items: [{ to: `${B}/overview`, label: "Overview" }, { to: `${B}/research`, label: "Research Directory" }, { to: `${B}/live-search`, label: "Live Search" }, { to: `${B}/outreach`, label: "Sales Outreach" }, { to: `${B}/pipeline`, label: "Pipeline" }, { to: `${B}/demo-guide`, label: "Demo Guide" }, { to: `${B}/preview`, label: "Preview" }, { to: `${B}/tutorial`, label: "Tutorial" }] },
         // Salespeople see research and sales only; the rest is for super admins.
         me.grants?.includes("super_admin")
           ? { title: "Operations", items: [{ to: `${B}/services`, label: "Service queue" }, { to: `${B}/workspaces`, label: "Client workspaces" }, { to: `/app/culturosity/manage`, label: "Culturosity catalogue" }, { to: `${B}/team`, label: "Sales team" }, { to: `${B}/settings`, label: "Access settings" }] }
@@ -427,7 +427,7 @@ function ResearchDetail({ id }: { id: string }) {
           <div key={s.id} style={{ padding: "8px 0", borderBottom: "1px solid #eee", fontSize: ".9rem" }}>
             <a href={s.url} target="_blank" rel="noopener noreferrer" style={{ overflowWrap: "anywhere" }}>{s.url}</a>
             <div className="muted">
-              {s.review_level === "page_reviewed" ? "Page reviewed" : s.review_level === "url_rechecked" ? "URL rechecked (reachability only)" : "Imported — needs review"} ·{" "}
+              {s.review_level === "page_reviewed" ? "Page reviewed" : s.review_level === "url_rechecked" ? "URL rechecked (reachability only)" : s.review_level === "web_search" ? "Found by live search — needs review" : "Imported — needs review"} ·{" "}
               {new Date(s.reviewed_at).toLocaleDateString()}
               {s.http_status ? ` · HTTP ${s.http_status}` : ""}
               {s.redirected_to ? ` · redirected to ${s.redirected_to}` : ""}
@@ -1203,6 +1203,219 @@ export function PreviewPage() {
   );
 }
 
+// ======================= Live Search (Claude web search) =======================
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+export function LiveSearchPage() {
+  useDocumentTitle("Live Search");
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [sp, setSp] = useSearchParams();
+  const openId = sp.get("search");
+  const { data, isLoading, error } = useQuery<any>({
+    queryKey: ["internal", "live"],
+    queryFn: () => api.get("/internal/live-research"),
+    refetchInterval: (q) => ((q.state.data as any)?.searches ?? []).some((x: any) => x.status === "queued" || x.status === "running") ? 4000 : false,
+  });
+  const [f, setF] = useState({ query: "", country: [] as string[], region: "", prospectType: "", sector: "", depth: "quick" });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const toggleCountry = (c: string) => setF((x) => ({ ...x, country: x.country.includes(c) ? x.country.filter((y) => y !== c) : [...x.country, c] }));
+
+  async function start(e: React.FormEvent) {
+    e.preventDefault();
+    setErrors({});
+    setBusy(true);
+    try {
+      const r = await api.post<{ id: string }>("/internal/live-research", f);
+      await qc.invalidateQueries({ queryKey: ["internal", "live"] });
+      setSp({ search: r.id });
+      toast(f.depth === "deep" ? "Deep search started — usually 1–3 minutes" : "Search started — usually under a minute");
+    } catch (x) {
+      setErrors((x as ApiError).fields ?? {});
+      toast((x as Error).message, "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const pct = data ? Math.min(100, Math.round((data.spentCents / Math.max(1, data.limitCents)) * 100)) : 0;
+  return (
+    <Wrap>
+      <PageHeader title="Live Search" eyebrow="Research Directory" />
+      <p className="muted" style={{ marginTop: 0, maxWidth: 800 }}>
+        Ask Claude to search the public web for affinity, employee-discount and member-benefit programs. You get <strong>suggestions with their source pages</strong>.
+        Nothing is added to the directory until you choose <strong>Add to directory</strong>.
+      </p>
+      {error ? <ErrorAlert error={error} /> : null}
+      {isLoading ? <Spinner /> : null}
+      {data && !data.configured ? (
+        <div className="alert alert-warning" style={{ marginBottom: 14 }}>
+          Live search isn't connected yet. The owner needs to add <code>ANTHROPIC_API_KEY</code> in Netlify and redeploy the site.
+        </div>
+      ) : null}
+      {data ? (
+        <div className="grid-2" style={{ alignItems: "start" }}>
+          <form className="panel" onSubmit={start} style={{ display: "grid", gap: 10 }}>
+            <h2 style={{ fontSize: "1.1rem", margin: 0 }}>New search</h2>
+            <TextArea
+              label="What should we look for?"
+              rows={3}
+              required
+              value={f.query}
+              error={errors.query}
+              onChange={(e) => setF({ ...f, query: e.target.value })}
+              placeholder="e.g. Teachers' associations in Manitoba that offer member discount programs"
+            />
+            <div className="row" style={{ gap: 14 }}>
+              <Checkbox label="Canada" checked={f.country.includes("CA")} onChange={() => toggleCountry("CA")} />
+              <Checkbox label="USA" checked={f.country.includes("US")} onChange={() => toggleCountry("US")} />
+            </div>
+            <div className="grid-2" style={{ gap: 10 }}>
+              <TextField label="Province / state (optional)" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })} />
+              <TextField label="Sector (optional)" value={f.sector} onChange={(e) => setF({ ...f, sector: e.target.value })} placeholder="e.g. Education" />
+            </div>
+            <SelectField label="Prospect type (optional)" value={f.prospectType} onChange={(e) => setF({ ...f, prospectType: e.target.value })}>
+              <option value="">Any type</option>
+              {PROSPECT_TYPES.map((t) => <option key={t} value={t}>{PROSPECT_TYPE_LABELS[t]}</option>)}
+            </SelectField>
+            <div className="segmented" role="group" aria-label="Search depth">
+              <button type="button" aria-pressed={f.depth === "quick"} onClick={() => setF({ ...f, depth: "quick" })}>Quick · about 10–30¢</button>
+              <button type="button" aria-pressed={f.depth === "deep"} onClick={() => setF({ ...f, depth: "deep" })}>Deep · about 50¢–$1.50</button>
+            </div>
+            <button className="btn btn-primary" disabled={busy || !data.configured || data.spentCents >= data.limitCents}>
+              {busy ? "Starting…" : "Search the web"}
+            </button>
+            <div>
+              <div className="muted" style={{ fontSize: ".85rem" }}>
+                This month: <strong>{money(data.spentCents)}</strong> of {money(data.limitCents)} used
+              </div>
+              <div className="ls-meter" aria-hidden><span style={{ width: `${pct}%` }} /></div>
+            </div>
+          </form>
+
+          <section className="panel">
+            <h2 style={{ fontSize: "1.1rem", marginTop: 0 }}>Recent searches</h2>
+            {data.searches.length ? (
+              <ul className="ls-list">
+                {data.searches.map((s: any) => (
+                  <li key={s.id}>
+                    <button type="button" className={`ls-item ${openId === s.id ? "on" : ""}`} onClick={() => setSp({ search: s.id })}>
+                      <span className="ls-q">{s.query}</span>
+                      <span className="muted" style={{ fontSize: ".8rem" }}>
+                        {s.status === "done" ? `${s.found} found${s.open ? ` · ${s.open} to review` : ""}` : s.status === "failed" ? "Failed" : "Searching…"} · {s.depth} ·{" "}
+                        {new Date(s.created_at).toLocaleDateString()} · {s.requested_by_name ?? ""}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">No searches yet.</p>
+            )}
+          </section>
+        </div>
+      ) : null}
+      {openId ? <LiveSearchResults id={openId} /> : null}
+    </Wrap>
+  );
+}
+
+function LiveSearchResults({ id }: { id: string }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { data, error } = useQuery<any>({
+    queryKey: ["internal", "live", id],
+    queryFn: () => api.get(`/internal/live-research/${id}`),
+    refetchInterval: (q) => (["queued", "running"].includes((q.state.data as any)?.search?.status) ? 3000 : false),
+  });
+  useEffect(() => {
+    if (data?.search?.status === "done" || data?.search?.status === "failed") qc.invalidateQueries({ queryKey: ["internal", "live"], exact: true });
+  }, [data?.search?.status, qc]);
+  if (error) return <ErrorAlert error={error} />;
+  if (!data) return <Spinner />;
+  const s = data.search;
+  async function act(gid: string, what: "add" | "dismiss") {
+    try {
+      await api.post(`/internal/live-research/suggestions/${gid}/${what}`);
+      toast(what === "add" ? "Added to the Research Directory" : "Dismissed");
+    } catch (e: any) {
+      toast(e.message, "error");
+    }
+    qc.invalidateQueries({ queryKey: ["internal", "live"] });
+  }
+  return (
+    <section className="panel" style={{ marginTop: 18 }} aria-live="polite">
+      <div className="spread" style={{ alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div className="eyebrow">Search results</div>
+          <h2 style={{ fontSize: "1.2rem", margin: "4px 0" }}>{s.query}</h2>
+          <div className="muted" style={{ fontSize: ".85rem" }}>
+            {s.depth === "deep" ? "Deep" : "Quick"} search · {s.web_searches} web searches · cost {money(s.cost_cents)}
+          </div>
+        </div>
+      </div>
+      {s.status === "queued" || s.status === "running" ? (
+        <div className="ls-running"><Spinner label="Searching the web" /> <span>Searching and reading pages… {s.depth === "deep" ? "usually 1–3 minutes" : "usually under a minute"}. You can leave this page; results are saved.</span></div>
+      ) : s.status === "failed" ? (
+        <div className="alert alert-error" style={{ marginTop: 12 }}>The search didn't finish: {s.error}</div>
+      ) : (
+        <>
+          {s.summary ? <p style={{ marginTop: 12 }}>{s.summary}</p> : null}
+          {!data.suggestions.length ? (
+            <p className="muted">No new organizations with reliable sources were found. Try a broader or differently worded search.</p>
+          ) : (
+            <div className="ls-results">
+              {data.suggestions.map((g: any) => (
+                <article key={g.id} className={`ls-card ${g.status}`}>
+                  <div className="spread" style={{ alignItems: "flex-start", gap: 10 }}>
+                    <div>
+                      <h3>{g.organization}</h3>
+                      <div className="muted" style={{ fontSize: ".82rem" }}>
+                        {[g.program_name, PROSPECT_TYPE_LABELS[g.prospect_type as keyof typeof PROSPECT_TYPE_LABELS], g.sector, g.region, (g.country ?? []).join(" · ")].filter(Boolean).join(" · ")}
+                      </div>
+                    </div>
+                    {g.status === "new" ? (
+                      <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                        <button className="btn btn-primary btn-sm" onClick={() => act(g.id, "add")}>Add to directory</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => act(g.id, "dismiss")}>Dismiss</button>
+                      </div>
+                    ) : g.status === "added" ? (
+                      <Link className="badge badge-mint" to={`${B}/research?open=${g.research_org_id}`}>Added — open record</Link>
+                    ) : (
+                      <span className="badge">Dismissed</span>
+                    )}
+                  </div>
+                  {g.summary ? <p>{g.summary}</p> : null}
+                  {g.official_url ? (
+                    <p style={{ margin: "4px 0" }}>
+                      Official site: <a href={g.official_url} target="_blank" rel="noopener noreferrer">{g.official_url.replace(/^https?:\/\//, "")}</a>
+                    </p>
+                  ) : null}
+                  <details>
+                    <summary>Sources ({g.citations.length})</summary>
+                    <ul>
+                      {g.citations.map((c: any, i: number) => (
+                        <li key={i}>
+                          <a href={c.url} target="_blank" rel="noopener noreferrer">{c.title || c.url}</a>
+                          {c.establishes ? <span className="muted"> — {c.establishes}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </article>
+              ))}
+            </div>
+          )}
+          <p className="muted" style={{ fontSize: ".8rem" }}>
+            Suggestions come only from pages retrieved during this search. Added records are marked “needs review” until someone checks the sources.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
 // ======================= Service queue =======================
 export function ServiceQueuePage() {
   useDocumentTitle("Service queue");
@@ -1397,7 +1610,43 @@ export function AccessSettingsPage() {
         <button className="btn btn-dark">Rotate code</button>
       </form>
       <NotificationSettings />
+      <LiveSearchLimit />
     </Wrap>
+  );
+}
+
+/** Owner setting: monthly spending limit for Live Search. */
+function LiveSearchLimit() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { data } = useQuery<any>({ queryKey: ["internal", "live"], queryFn: () => api.get("/internal/live-research") });
+  const [v, setV] = useState<string | null>(null);
+  if (!data) return null;
+  const value = v ?? String(data.limitCents / 100);
+  return (
+    <form
+      className="panel"
+      style={{ maxWidth: 520, marginTop: 20 }}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        try {
+          await api.put("/internal/settings/research-limit", { monthlyLimitDollars: Number(value) });
+          setV(null);
+          await qc.invalidateQueries({ queryKey: ["internal", "live"] });
+          toast("Live search limit saved");
+        } catch (x: any) {
+          toast(x.message, "error");
+        }
+      }}
+    >
+      <h2 style={{ fontSize: "1.1rem" }}>Live Search monthly limit</h2>
+      <p className="muted" style={{ fontSize: ".88rem" }}>
+        Searches stop for everyone once this month’s spend reaches the limit. Used so far this month: <strong>{money(data.spentCents)}</strong>.
+        {data.configured ? "" : " Live search isn’t connected yet (ANTHROPIC_API_KEY)."}
+      </p>
+      <TextField label="Limit in US dollars per month" type="number" min={0} max={5000} step={1} value={value} onChange={(e) => setV(e.target.value)} />
+      <button className="btn btn-dark">Save</button>
+    </form>
   );
 }
 

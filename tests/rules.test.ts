@@ -85,3 +85,26 @@ describe("research fetch safety", () => {
     expect(extractTitle("<html><title>Perks &amp; <b>More</b></title><script>ignore()</script>")).toBe("Perks & More");
   });
 });
+
+describe("live research: only cited, actually-retrieved pages survive", () => {
+  it("drops candidates whose citations weren't retrieved, and unverified official URLs", async () => {
+    const { verifyCandidates, normUrl, costCents } = await import("../server/lib/liveResearch");
+    const retrieved = new Set([normUrl("https://www.mbteach.org/benefits/")!, normUrl("https://example.org/perks")!]);
+    const hosts = new Set(["mbteach.org", "example.org"]);
+    const base = { program_name: "", summary: "s", country: ["CA"], region: "MB", prospect_type: "association", sector: "Education" };
+    const out = verifyCandidates(
+      [
+        { ...base, organization: "Real", official_url: "https://mbteach.org", citations: [{ url: "https://mbteach.org/benefits", title: "t", establishes: "e" }] },
+        { ...base, organization: "Invented", official_url: "https://made-up.example", citations: [{ url: "https://made-up.example/x", title: "t", establishes: "e" }] },
+        { ...base, organization: "Mixed", official_url: "https://elsewhere.test", citations: [{ url: "https://example.org/perks#top", title: "t", establishes: "e" }, { url: "https://nope.test", title: "", establishes: "" }] },
+      ],
+      retrieved,
+      hosts,
+    );
+    expect(out.map((c) => c.organization)).toEqual(["Real", "Mixed"]);
+    expect(out[0].official_url).toBe("https://mbteach.org");
+    expect(out[1].official_url).toBe(""); // official URL on a host never retrieved is dropped
+    expect(out[1].citations).toHaveLength(1);
+    expect(costCents({ input: 100_000, output: 5_000, cacheRead: 0, cacheWrite: 0, searches: 4 })).toBe(54); // $0.40 + $0.10 + $0.04
+  });
+});

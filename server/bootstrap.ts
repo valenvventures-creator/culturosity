@@ -14,6 +14,6 @@ export async function createDeps(cfg: ServerConfig = loadConfig()): Promise<Deps
     storage: await createStorageFromConfig(cfg),
     email: createEmailAdapter(cfg),
     ai: createAiAdapter(cfg),
-    research: createResearchFetcher({ searchConfigured: Boolean(cfg.researchProvider) }),
+    research: createResearchFetcher({ searchConfigured: Boolean(cfg.anthropicApiKey || cfg.researchProvider) }),
   };
 }

@@ -60,7 +60,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     maxUploadBytes: Number(env.MAX_UPLOAD_BYTES || 5 * 1024 * 1024),
     emailFrom: env.EMAIL_FROM || "Culturosity <hello@culturosity.io>",
     resendApiKey: env.RESEND_API_KEY || null,
-    anthropicApiKey: env.ANTHROPIC_API_KEY || null,
+    // Trim pasted spaces/quotes so a copied key still works.
+    anthropicApiKey: (env.ANTHROPIC_API_KEY || "").trim().replace(/^["']|["']$/g, "") || null,
     aiModel: env.AI_MODEL || "claude-opus-5-5",
     aiEffort: effort,
     researchProvider: env.RESEARCH_SEARCH_PROVIDER || null,

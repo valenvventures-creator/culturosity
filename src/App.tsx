@@ -44,6 +44,7 @@ const ManageWorkspaceSettings = L(org, "ManageWorkspaceSettings");
 const InternalLayout = L(internal, "InternalLayout");
 const InternalOverview = L(internal, "InternalOverview");
 const ResearchPage = L(internal, "ResearchPage");
+const LiveSearchPage = L(internal, "LiveSearchPage");
 const OutreachPage = L(internal, "OutreachPage");
 const PipelinePage = L(internal, "PipelinePage");
 const DemoGuidePage = L(internal, "DemoGuidePage");
@@ -147,6 +148,7 @@ const router = createBrowserRouter(
       { index: true, element: <Navigate to="overview" replace /> },
       { path: "overview", element: S(<InternalOverview />) },
       { path: "research", element: S(<ResearchPage />) },
+      { path: "live-search", element: S(<LiveSearchPage />) },
       { path: "outreach", element: S(<OutreachPage />) },
       { path: "pipeline", element: S(<PipelinePage />) },
       { path: "demo-guide", element: S(<DemoGuidePage />) },

@@ -3785,3 +3785,81 @@ table.data tr.clickable {
   border-radius: 10px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
 }
+
+/* Live Search */
+.ls-meter {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line-light);
+  overflow: hidden;
+  margin-top: 6px;
+}
+.ls-meter span {
+  display: block;
+  height: 100%;
+  background: #0a6b51;
+}
+.ls-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.ls-item {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--line-light);
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.ls-item.on {
+  border-color: #0a6b51;
+  box-shadow: 0 0 0 2px rgba(10, 107, 81, 0.15);
+}
+.ls-q {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ls-running {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+.ls-results {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+.ls-card {
+  border: 1px solid var(--line-light);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff;
+}
+.ls-card.dismissed {
+  opacity: 0.55;
+}
+.ls-card h3 {
+  font-size: 1.05rem;
+  margin: 0 0 2px;
+}
+.ls-card p {
+  margin: 8px 0 0;
+}
+.ls-card details {
+  margin-top: 8px;
+}
+.ls-card summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.88rem;
+}

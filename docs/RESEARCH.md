@@ -25,21 +25,16 @@ Internal, gate-protected directory of **publicly discoverable** affinity, employ
 
 The 20 records from the master prompt (§19) reviewed on 2026-11-17, with official source URLs preserved (`server/seed/research.ts`). Revalidate before outreach.
 
-## Live search connector (not configured)
+## Live search (Claude web search)
 
-`RESEARCH_SEARCH_PROVIDER` / `RESEARCH_SEARCH_API_KEY` are reserved. No search provider is wired in, and the UI says so; results are never simulated. To add one, implement:
+Enabled when `ANTHROPIC_API_KEY` is set (model `AI_MODEL`, default `claude-opus-5-5`).
 
-```ts
-interface ResearchSearchConnector {
-  // Server-side only. Must return candidates with citations; never writes records directly.
-  search(query: { text: string; country?: "CA" | "US" }): Promise<Array<{
-    organization: string; programName?: string; summary?: string;
-    officialUrl: string; citations: { url: string; title: string; retrievedAt: string }[];
-  }>>;
-}
-```
-
-Proposals must go to an admin review queue and become records only through `POST /api/internal/research`, so they pass the same dedupe and validation. Respect each search provider's terms. Do not bypass logins or access controls to read private discounts.
+- **Admin Research & Sales → Live Search** (salespeople and super admins). A request plus optional country, province/state, sector and prospect type; Quick (4 searches / 3 page reads) or Deep (12 / 8).
+- Runs as a job: the API queues it and calls the Netlify background function `research-search-background` (up to 15 minutes) with a one-time token; locally it runs in-process. The page polls for results.
+- Claude uses the server-side `web_search_20260209` and `web_fetch_20260209` tools, then calls a strict `submit_candidates` tool. Web content is treated as untrusted data.
+- **Every suggestion must cite pages actually retrieved in that run** (checked against the tool results); unsupported candidates and unverified official URLs are dropped. Organizations already in the directory (name or domain) are skipped.
+- Suggestions are never written to the directory automatically. **Add to directory** creates a `needs_review` record with `web_search` sources, which outreach grounding ignores until reviewed.
+- Spend is estimated per search (tokens at list price + $10 per 1,000 web searches) and capped by a monthly limit the owner sets in Access settings (default $25).
 
 ## Outreach guardrails
 

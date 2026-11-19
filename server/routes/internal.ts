@@ -477,6 +477,147 @@ internalRoutes.post("/internal/research/import", async (c) => {
 });
 
 // ================= Pipeline, contacts, activities =================
+// ================= Live research search (Claude web search) =================
+const liveSearchSchema = z.object({
+  query: z.string().trim().min(5, "Describe what to look for (5+ characters)").max(400),
+  country: z.array(z.enum(["CA", "US"])).max(2).default([]),
+  region: z.string().trim().max(120).default(""),
+  prospectType: z.union([z.enum(["employer", "association", "operator", "merchant"]), z.literal("")]).default(""),
+  sector: z.string().trim().max(120).default(""),
+  depth: z.enum(["quick", "deep"]).default("quick"),
+});
+
+internalRoutes.get("/internal/live-research", async (c) => {
+  await requireUnlock(c);
+  const { db, config } = c.get("deps");
+  const { monthlySpend } = await import("../lib/liveResearch");
+  const searches = await db.query(
+    `select s.id, s.query, s.country, s.region, s.prospect_type, s.sector, s.depth, s.status, s.web_searches, s.cost_cents, s.error, s.summary,
+            s.created_at, s.finished_at, u.display_name as requested_by_name,
+            (select count(*)::int from research_suggestions g where g.search_id = s.id) as found,
+            (select count(*)::int from research_suggestions g where g.search_id = s.id and g.status = 'new') as open
+       from research_searches s left join app_users u on u.id = s.requested_by order by s.created_at desc limit 25`,
+  );
+  c.header("Cache-Control", "no-store");
+  return c.json({ configured: Boolean(config.anthropicApiKey), ...(await monthlySpend(db)), searches: searches.rows });
+});
+
+internalRoutes.post("/internal/live-research", async (c) => {
+  const { user } = await requireUnlock(c);
+  const { db, config } = c.get("deps");
+  if (!config.anthropicApiKey) throw new AppError(503, "not_configured", "Live search isn't connected yet. The owner needs to add ANTHROPIC_API_KEY in Netlify and redeploy.");
+  await rateLimit(db, `live-search:${user.id}`, 20, 3600);
+  const parsed = liveSearchSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) throw fromZod(parsed.error);
+  const b = parsed.data;
+  const { monthlySpend, runResearchSearch } = await import("../lib/liveResearch");
+  const { spentCents, limitCents } = await monthlySpend(db);
+  if (spentCents >= limitCents)
+    throw new AppError(402, "limit_reached", `This month's live search budget ($${(limitCents / 100).toFixed(2)}) has been used. The owner can raise it in Access settings.`);
+  const running = await db.query<{ n: number }>(`select count(*)::int as n from research_searches where requested_by = $1 and status in ('queued','running') and created_at > now() - interval '20 minutes'`, [user.id]);
+  if (running.rows[0].n >= 2) throw new AppError(429, "busy", "You already have searches running. Wait for them to finish.");
+  const token = randomToken(24);
+  const r = await db.query<{ id: string }>(
+    `insert into research_searches (requested_by, query, country, region, prospect_type, sector, depth, run_token_hash)
+     values ($1,$2,$3::text[],$4,$5,$6,$7,$8) returning id`,
+    [user.id, b.query, b.country, b.region, b.prospectType, b.sector, b.depth, sha256(token)],
+  );
+  const id = r.rows[0].id;
+  if (config.isNetlify) {
+    // Netlify background function (up to 15 minutes); it answers 202 immediately.
+    const origin = new URL(c.req.url).origin;
+    const res = await fetch(`${origin}/.netlify/functions/research-search-background`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, token }),
+    }).catch((e) => ({ ok: false, status: 0, statusText: (e as Error).message }) as any);
+    if (!res.ok && res.status !== 202) {
+      await db.query(`update research_searches set status = 'failed', error = $2, finished_at = now() where id = $1`, [id, `Couldn't start the search (${res.status}).`]);
+      throw new AppError(502, "start_failed", "Couldn't start the search. Please try again.");
+    }
+  } else {
+    void runResearchSearch(c.get("deps"), id).catch((e) => console.error("[live-research]", (e as Error).message));
+  }
+  return c.json({ id }, 202);
+});
+
+internalRoutes.get("/internal/live-research/:id", async (c) => {
+  await requireUnlock(c);
+  const { db } = c.get("deps");
+  const s = await db.query(
+    `select s.*, u.display_name as requested_by_name from research_searches s left join app_users u on u.id = s.requested_by where s.id = $1`,
+    [c.req.param("id")],
+  );
+  if (!s.rows[0]) throw notFound();
+  const { run_token_hash: _hidden, ...search } = s.rows[0] as any;
+  const sug = await db.query(
+    `select g.*, d.display_name as decided_by_name from research_suggestions g left join app_users d on d.id = g.decided_by where g.search_id = $1 order by g.created_at`,
+    [c.req.param("id")],
+  );
+  c.header("Cache-Control", "no-store");
+  return c.json({ search, suggestions: sug.rows });
+});
+
+internalRoutes.post("/internal/live-research/suggestions/:id/add", async (c) => {
+  const { user } = await requireUnlock(c);
+  const { db } = c.get("deps");
+  const g = (await db.query<any>(`select * from research_suggestions where id = $1`, [c.req.param("id")])).rows[0];
+  if (!g) throw notFound();
+  if (g.status !== "new") throw badRequest("This suggestion was already handled.");
+  const domain = g.official_url ? (() => { try { return new URL(g.official_url).hostname.replace(/^www\./, "").toLowerCase(); } catch { return null; } })() : null;
+  const dup = await findDuplicate(c, g.organization, domain);
+  if (dup) {
+    await db.query(`update research_suggestions set status = 'dismissed', decided_by = $2, decided_at = now(), research_org_id = $3 where id = $1`, [g.id, user.id, dup.id]);
+    throw new AppError(409, "duplicate", `“${dup.display_name}” is already in the directory.`, { id: dup.id });
+  }
+  const types = ["employer", "association", "operator", "merchant"].includes(g.prospect_type) ? [g.prospect_type] : ["employer"];
+  const orgId = await db.tx(async (q) => {
+    const r = await q.query<{ id: string }>(
+      `insert into research_organizations (display_name, primary_domain, country, region, industry, prospect_types, research_focus, internal_notes,
+         verification_status, last_checked_at, created_by)
+       values ($1,$2,$3::text[],$4,$5,$6::text[],$7,$8,'needs_review',now(),$9) returning id`,
+      [g.organization, domain, g.country?.length ? g.country : ["CA", "US"], g.region, g.sector, types, (g.summary || "").slice(0, 300),
+       "Found by live search — check the sources before relying on these facts.", user.id],
+    );
+    const orgId = r.rows[0].id;
+    let programId: string | null = null;
+    if (g.program_name || g.summary) {
+      const p = await q.query<{ id: string }>(
+        `insert into research_programs (organization_id, name, summary, official_website, verification_status, last_checked_at)
+         values ($1,$2,$3,$4,'needs_review',now()) returning id`,
+        [orgId, g.program_name || `${g.organization} program`, g.summary || "", g.official_url || null],
+      );
+      programId = p.rows[0].id;
+    }
+    for (const s of g.citations ?? [])
+      await q.query(
+        `insert into research_sources (organization_id, program_id, url, title, review_level, reviewed_at, note, created_by) values ($1,$2,$3,$4,'web_search',now(),$5,$6)`,
+        [orgId, programId, s.url, s.title || "", `Found by live search: ${s.establishes || ""}`.slice(0, 1000), user.id],
+      );
+    await q.query(`update research_suggestions set status = 'added', research_org_id = $2, decided_by = $3, decided_at = now() where id = $1`, [g.id, orgId, user.id]);
+    await audit(q, { actor: user.id, action: "research.created_from_live_search", targetType: "research_organization", targetId: orgId });
+    return orgId;
+  });
+  return c.json({ id: orgId }, 201);
+});
+
+internalRoutes.post("/internal/live-research/suggestions/:id/dismiss", async (c) => {
+  const { user } = await requireUnlock(c);
+  const { db } = c.get("deps");
+  await db.query(`update research_suggestions set status = 'dismissed', decided_by = $2, decided_at = now() where id = $1 and status = 'new'`, [c.req.param("id"), user.id]);
+  return c.json({ ok: true });
+});
+
+internalRoutes.put("/internal/settings/research-limit", async (c) => {
+  const { user } = await requireUnlock(c, ["super_admin"]);
+  const { db } = c.get("deps");
+  const dollars = Number(((await c.req.json().catch(() => ({}))) as { monthlyLimitDollars?: number }).monthlyLimitDollars);
+  if (!Number.isFinite(dollars) || dollars < 0 || dollars > 5000) throw badRequest("Enter a monthly limit between $0 and $5,000.", { monthlyLimitDollars: "0–5000" });
+  await setSetting(db, "research_monthly_limit_cents", Math.round(dollars * 100), user.id);
+  await audit(db, { actor: user.id, action: "settings.research_limit_updated", meta: { dollars } });
+  return c.json({ ok: true });
+});
+
 internalRoutes.get("/internal/pipeline", async (c) => {
   await requireUnlock(c);
   const r = await c.get("deps").db.query(
@@ -590,7 +731,7 @@ internalRoutes.post("/internal/outreach/generate", async (c) => {
     throw conflict("This organization is marked Do Not Contact. Outreach drafting is disabled.");
   const programs = await db.query<any>(`select name, summary from research_programs where organization_id = $1 order by name limit 1`, [b.researchOrgId]);
   const sources = await db.query<any>(
-    `select id, url from research_sources where organization_id = $1 and ($2::uuid[] = '{}' or id = any($2::uuid[])) and review_level <> 'imported' order by reviewed_at desc limit 5`,
+    `select id, url from research_sources where organization_id = $1 and ($2::uuid[] = '{}' or id = any($2::uuid[])) and review_level in ('page_reviewed','url_rechecked') order by reviewed_at desc limit 5`,
     [b.researchOrgId, b.sourceIds],
   );
   const ctx: OutreachContext = {

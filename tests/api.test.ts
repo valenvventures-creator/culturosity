@@ -700,3 +700,57 @@ describe("removing an extra super admin account", () => {
     expect((await ctx.db.query(`select 1 from memberships where org_id = $1 and role = 'owner' and status = 'active'`, [cul])).rows.length).toBeGreaterThan(0);
   });
 });
+
+describe("live research search (no real API calls)", () => {
+  it("reports when it isn't connected, and adds or dismisses suggestions safely", async () => {
+    await ctx.db.query(`delete from rate_limits`);
+    const sa = client(app, "10.12.0.1");
+    await sa.signIn("super@demo.culturosity.test");
+    await sa.post("/internal/gate/unlock", { code: TEST_GATE_CODE });
+    const live = (await sa.get("/internal/live-research")).json;
+    expect(live).toMatchObject({ configured: false, limitCents: 2500, spentCents: 0 });
+    expect((await sa.post("/internal/live-research", { query: "teachers associations in Manitoba", depth: "quick" })).status).toBe(503);
+
+    // Owner-only monthly limit.
+    // A fresh salesperson (the demo one is locked out by the wrong-code test above).
+    const { passwordAuth } = await import("../server/lib/auth");
+    const repId = await ctx.db.tx((q) => passwordAuth.createPasswordUser(q, { email: "rep.live@example.com", password: "a-long-rep-password-1", displayName: "Rep", verified: true }));
+    await ctx.db.query(`insert into platform_grants (user_id, grant_name) values ($1,'sales_admin')`, [repId]);
+    const sales = client(app, "10.12.0.2");
+    await sales.signIn("rep.live@example.com", "a-long-rep-password-1");
+    await sales.post("/internal/gate/unlock", { code: TEST_GATE_CODE });
+    expect((await sales.get("/internal/live-research")).status).toBe(200); // salespeople can use it
+    expect((await sales.put("/internal/settings/research-limit", { monthlyLimitDollars: 100 })).status).toBe(404);
+    expect((await sa.put("/internal/settings/research-limit", { monthlyLimitDollars: 40 })).status).toBe(200);
+    expect((await sa.get("/internal/live-research")).json.limitCents).toBe(4000);
+
+    // A finished search with two suggestions (as the background job would store them).
+    const s = await ctx.db.query<{ id: string }>(
+      `insert into research_searches (query, depth, status, run_token_hash, cost_cents, web_searches) values ('test','quick','done','x', 12, 3) returning id`,
+    );
+    const mk = async (org: string, url: string) =>
+      (
+        await ctx.db.query<{ id: string }>(
+          `insert into research_suggestions (search_id, organization, program_name, summary, official_url, country, region, prospect_type, sector, citations)
+           values ($1,$2,'Member Perks','Discounts for members.',$3,'{CA}','MB','association','Education',$4::jsonb) returning id`,
+          [s.rows[0].id, org, url, JSON.stringify([{ url: url + "/perks", title: "Perks", establishes: "Has a member perks page" }])],
+        )
+      ).rows[0].id;
+    const a = await mk("Prairie Example Teachers", "https://prairie-teachers.example");
+    const b = await mk("Second Example Union", "https://second-union.example");
+
+    const view = (await sales.get(`/internal/live-research/${s.rows[0].id}`)).json;
+    expect(view.suggestions).toHaveLength(2);
+    expect(view.search.run_token_hash).toBeUndefined(); // the job token never leaves the server
+
+    const added = await sales.post(`/internal/live-research/suggestions/${a}/add`);
+    expect(added.status).toBe(201);
+    const rec = (await sales.get(`/internal/research/${added.json.id}`)).json;
+    expect(rec.record).toMatchObject({ display_name: "Prairie Example Teachers", verification_status: "needs_review", primary_domain: "prairie-teachers.example" });
+    expect(rec.sources[0].review_level).toBe("web_search");
+    expect((await sales.post(`/internal/live-research/suggestions/${a}/add`)).status).toBe(400); // already handled
+
+    expect((await sales.post(`/internal/live-research/suggestions/${b}/dismiss`)).status).toBe(200);
+    expect((await sales.get(`/internal/live-research`)).json.spentCents).toBe(12);
+  });
+});

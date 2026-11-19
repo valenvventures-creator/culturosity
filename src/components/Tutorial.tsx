@@ -90,6 +90,7 @@ const TOC: [string, string][] = [
   ["access", "Getting in"],
   ["overview", "Overview"],
   ["research", "Research Directory"],
+  ["live", "Live Search"],
   ["outreach", "Sales Outreach"],
   ["pipeline", "Pipeline"],
   ["demo", "Demo Guide"],
@@ -262,6 +263,43 @@ export function TutorialPage() {
             </Steps>
             <Tip kind="important">Only record facts you found on a public, reliable source. Never invent discounts, contacts or partnerships.</Tip>
           </Section>
+
+          {/* ---------------- Live Search ---------------- */}
+          <section id="live" className="tut-section panel" aria-labelledby="live-h">
+            <div className="tut-section-head">
+              <div>
+                <div className="eyebrow">Part 3b</div>
+                <h2 id="live-h">Live Search</h2>
+              </div>
+              <OpenLink to={`${B}/live-search`}>Open Live Search</OpenLink>
+            </div>
+            <p className="tut-intro">
+              Finds new affinity, employee-discount and member-benefit programs on the public web for you. Claude searches, reads the pages and returns{" "}
+              <strong>suggestions with their sources</strong>. Nothing goes into the directory until you add it.
+            </p>
+            <Steps>
+              <li>
+                Describe what you're looking for in plain words, e.g. “Teachers' associations in Manitoba that offer member discount programs”.
+              </li>
+              <li>Optionally tick Canada / USA and add a province or state, a sector and a prospect type to focus the search.</li>
+              <li>
+                Choose <strong>Quick</strong> (under a minute, about 10–30¢) or <strong>Deep</strong> (1–3 minutes, about 50¢–$1.50), then select <strong>Search the web</strong>.
+              </li>
+              <li>Results appear below when ready. You can leave the page — searches are saved under Recent searches.</li>
+              <li>
+                For each suggestion, open <strong>Sources</strong> and check the pages. Select <strong>Add to directory</strong> for good fits or <strong>Dismiss</strong> for the rest.
+              </li>
+            </Steps>
+            <Terms
+              items={[
+                ["Suggestion", "An organization the search found. Every one is backed by pages actually retrieved during the search; anything it couldn't support is left out."],
+                ["Sources", "The pages each suggestion is based on, with what each page shows. Always check them before relying on the facts."],
+                ["Found by live search — needs review", "How added records and their sources are labelled until someone reviews the pages. They aren't used for outreach drafts until then."],
+                ["Monthly budget", "Live Search stops for everyone when this month's spending limit is reached. The owner sets the limit."],
+              ]}
+            />
+            <Tip>Organizations already in the directory are skipped automatically, so each search only shows new ones.</Tip>
+          </section>
 
           {/* ---------------- Outreach ---------------- */}
           <Section
